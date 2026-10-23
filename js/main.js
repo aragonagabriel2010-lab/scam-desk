@@ -1263,7 +1263,6 @@ function enterDesktop() {
   renderHustles();
   renderCards();
   renderTaskbar();
-  maybeShowTutorial();
   toast(`Desktop pronto · start → Inizia partita (Giorno ${state.day})`);
 }
 
@@ -1316,6 +1315,7 @@ function beginMatch() {
   toast(`Giorno ${state.day}: le chiamate stanno arrivando…`);
   updateBeginMatchButton();
   openWindow("phone");
+  maybeShowTutorial();
   setTimeout(() => {
     if (state.playing && !state.over) ringIncoming();
   }, 1400);
