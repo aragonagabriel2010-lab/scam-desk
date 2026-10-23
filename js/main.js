@@ -13,7 +13,7 @@ import {
   testAi,
   describeAiConfig,
 } from "./ai.js";
-import { APPS, CARDS, HUSTLES, rollPayout } from "./shop.js";
+import { APPS, CARDS, HUSTLES, rollPayout, dayQuota } from "./shop.js";
 import { createMultiplayer } from "./multiplayer.js";
 import {
   createMic,
@@ -37,8 +37,8 @@ import {
 } from "./audio.js";
 import { initAllWindows } from "./windows.js";
 
-const QUOTA = 600;
 const START_HOUR = 9;
+const SAVE_KEY = "scamdesk-save-v1";
 const HISCORE_KEY = "scamdesk-hiscore";
 const TUTORIAL_KEY = "scamdesk-tutorial-v1";
 const WIN_TITLES = {
@@ -52,6 +52,8 @@ const WIN_TITLES = {
 };
 
 const state = {
+  day: 1,
+  dayEarned: 0,
   cash: 0,
   risk: 0,
   minute: 0,
@@ -72,6 +74,8 @@ const state = {
   ttsRetry: null,
   hustleCd: {},
   net: null,
+  playing: false,
+  retryPending: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -101,6 +105,47 @@ function saveHiscore(cash) {
     return true;
   }
   return false;
+}
+
+function loadSave() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+    return raw && typeof raw === "object" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSave() {
+  const data = {
+    day: state.day,
+    dayEarned: state.dayEarned,
+    cash: state.cash,
+    apps: [...state.apps],
+    retryPending: state.retryPending,
+    callHistory: state.callHistory.slice(0, 20),
+  };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  saveHiscore(state.cash);
+}
+
+function applySave(data) {
+  if (!data) return;
+  const day = Math.floor(Number(data.day));
+  const dayEarned = Number(data.dayEarned);
+  const cash = Number(data.cash);
+  state.day = Number.isFinite(day) ? Math.max(1, day) : 1;
+  state.dayEarned = Number.isFinite(dayEarned) ? Math.max(0, dayEarned) : 0;
+  state.cash = Number.isFinite(cash) ? Math.max(0, cash) : 0;
+  state.apps = new Set(
+    Array.isArray(data.apps) ? data.apps.filter((id) => APPS.some((app) => app.id === id)) : []
+  );
+  state.retryPending = Boolean(data.retryPending);
+  state.callHistory = Array.isArray(data.callHistory) ? data.callHistory.slice(0, 20) : [];
+}
+
+function quota() {
+  return dayQuota(state.day);
 }
 
 function updateTrustHint() {
@@ -139,8 +184,9 @@ function clockLabel() {
 }
 
 function renderHud() {
+  const dailyQuota = quota();
   $("#stat-cash").textContent = money(state.cash);
-  $("#stat-quota").textContent = `${money(state.cash)} / ${money(QUOTA)}`;
+  $("#stat-quota").textContent = `${money(state.dayEarned)} / ${money(dailyQuota)} oggi`;
   $("#stat-risk").textContent = `${Math.round(state.risk)}%`;
   $("#risk-fill").style.width = `${Math.min(100, state.risk)}%`;
   $("#stat-time").textContent = clockLabel();
@@ -153,15 +199,56 @@ function renderHud() {
   if ($("#stat-combo")) $("#stat-combo").textContent = String(state.combo);
   if ($("#stat-hiscore")) $("#stat-hiscore").textContent = money(state.hiscore);
   if ($("#wallet-hiscore")) $("#wallet-hiscore").textContent = money(state.hiscore);
-  if ($("#title-hiscore")) $("#title-hiscore").textContent = `Record: ${money(state.hiscore)}`;
-  const left = Math.max(0, QUOTA - state.cash);
+  if ($("#stat-day")) $("#stat-day").textContent = String(state.day);
+  if ($("#wallet-day")) $("#wallet-day").textContent = `Giorno ${state.day}`;
+  if ($("#tray-day")) $("#tray-day").textContent = `G${state.day}`;
+  const title = $("#title");
+  if ($("#title-hiscore") && title && !title.classList.contains("hidden")) {
+    const saved = loadSave();
+    $("#title-hiscore").textContent = saved
+      ? `Salvataggio: Giorno ${state.day} · ${money(state.cash)} · Record ${money(state.hiscore)}`
+      : `Record: ${money(state.hiscore)}`;
+    const startButton = $("#btn-start");
+    if (startButton) startButton.textContent = saved ? `Apri desktop · Giorno ${state.day}` : "Apri desktop";
+  }
+  const left = Math.max(0, dailyQuota - state.dayEarned);
   if ($("#goal-banner")) {
     $("#goal-banner").textContent =
       left > 0
-        ? `Obiettivo: ancora ${money(left)} alla quota · rischio ${Math.round(state.risk)}% · combo ×${state.combo}`
-        : `Quota raggiunta! Chiudi il turno o continua a rischiare.`;
+        ? `Giorno ${state.day}: ancora ${money(left)} alla quota · cassa totale ${money(state.cash)}`
+        : `Quota giorno ${state.day} fatta! Chiudi la giornata o continua a rischiare.`;
   }
+  updateBeginMatchButton();
   updateTrustHint();
+}
+
+function updateBeginMatchButton() {
+  const button = $("#btn-begin-match");
+  if (button) {
+    button.textContent = state.playing
+      ? `▶ Partita in corso (G${state.day})`
+      : `▶ Inizia partita · Giorno ${state.day}`;
+    button.disabled = state.playing;
+  }
+  const endButton = $("#btn-end-shift");
+  if (endButton) endButton.disabled = !state.playing;
+}
+
+function gainCash(amount) {
+  const earned = Math.max(0, Number(amount) || 0);
+  state.cash += earned;
+  state.dayEarned += earned;
+  persistSave();
+}
+
+function spendCash(amount) {
+  const spent = Math.max(0, Number(amount) || 0);
+  state.cash = Math.max(0, state.cash - spent);
+  persistSave();
+}
+
+function checkDayQuota() {
+  if (state.playing && state.dayEarned >= quota()) endGame("quota");
 }
 
 function renderCallHistory() {
@@ -245,6 +332,8 @@ function addRisk(amount, reason) {
 function pushNetSync() {
   if (!state.net?.isHost()) return;
   state.net.pushState({
+    day: state.day,
+    dayEarned: state.dayEarned,
     cash: state.cash,
     risk: state.risk,
     combo: state.combo,
@@ -259,8 +348,11 @@ function applyNetSync(s) {
   state.cash = s.cash ?? state.cash;
   state.risk = s.risk ?? state.risk;
   state.combo = s.combo ?? state.combo;
+  if (s.day != null) state.day = Math.max(1, Number(s.day) || state.day);
+  if (s.dayEarned != null) state.dayEarned = Math.max(0, Number(s.dayEarned) || 0);
   if (Array.isArray(s.codes)) state.codes = s.codes;
   if (Array.isArray(s.apps)) state.apps = new Set(s.apps);
+  persistSave();
   renderHud();
   renderCodes();
   renderApps();
@@ -278,30 +370,41 @@ function triggerHackScare() {
 function endGame(kind) {
   if (state.over) return;
   state.over = true;
+  state.playing = false;
+  state.retryPending = kind === "swat" || kind === "hack";
   clearInterval(state.tick);
+  state.tick = null;
   clearTimeout(state.ttsRetry);
   stopSpeaking();
   stopRingtone();
   hangUp(true);
   const title = $("#overlay-title");
   const body = $("#overlay-body");
+  const button = $("#overlay-restart");
+  const completedDay = state.day;
   const record = saveHiscore(state.cash);
   const recordLine = record ? ` Nuovo record: ${money(state.cash)}!` : ` Record: ${money(state.hiscore)}.`;
   if (kind === "swat") {
     title.textContent = "SWAT alla porta";
-    body.textContent =
-      `Troppo rumore. Qualcuno ha segnalato il call center. Cassa: ${money(state.cash)}.${recordLine}`;
+    body.textContent = `Troppo rumore. Qualcuno ha segnalato il call center. Cassa: ${money(state.cash)}. Riprova il giorno ${state.day}.${recordLine}`;
   } else if (kind === "hack") {
     title.textContent = "Siete stati hackerati";
-    body.textContent = "Un baiter ha riverato la rete. I soldi spariscono. Game over.";
-    state.cash = 0;
+    const lost = Math.floor(state.cash * 0.5);
+    state.cash = Math.max(0, state.cash - lost);
+    body.textContent = `Un baiter ha colpito la rete. Perdi ${money(lost)}, restano ${money(state.cash)}. Riprova il giorno ${state.day}.${recordLine}`;
   } else if (kind === "quota") {
-    title.textContent = "Quota fatta";
-    body.textContent = `Turno chiuso con ${money(state.cash)}. Il capo è… quasi contento.${recordLine}`;
+    title.textContent = `Giorno ${completedDay} — quota fatta`;
+    body.textContent = `Il capo è quasi contento. Cassa: ${money(state.cash)}. Il giorno ${state.day + 1} è pronto.${recordLine}`;
   } else {
-    title.textContent = "Turno finito";
-    body.textContent = `Cassa: ${money(state.cash)}. Rischio: ${Math.round(state.risk)}%.${recordLine}`;
+    title.textContent = `Giorno ${completedDay} finito`;
+    body.textContent = `Cassa: ${money(state.cash)}. Giorno ${state.day + 1} pronto.${recordLine}`;
   }
+  if (kind === "quota" || kind === "time") {
+    state.day += 1;
+    state.dayEarned = 0;
+  }
+  if (button) button.textContent = `Torna al desktop · G${state.day}`;
+  persistSave();
   renderHud();
   $("#overlay").classList.remove("hidden");
   $("#overlay").setAttribute("aria-hidden", "false");
@@ -528,7 +631,7 @@ function hideCallPopup() {
 }
 
 function ringIncoming() {
-  if (state.over || state.call || state.pendingCaller) return;
+  if (!state.playing || state.over || state.call || state.pendingCaller) return;
   const caller = pickCaller(state.call?.caller?.id);
   showCallPopup(caller);
 }
@@ -937,9 +1040,12 @@ function renderApps() {
   grid.innerHTML = "";
   for (const app of APPS) {
     const owned = state.apps.has(app.id);
-    const locked = state.cash < app.unlockAt && !owned;
+    const dayLocked = state.day < (app.unlockDay || 1) && !owned;
+    const requiredCash = Math.max(app.price, app.unlockAt);
+    const cashLocked = state.cash < requiredCash && !owned;
+    const locked = dayLocked || cashLocked;
     const card = document.createElement("article");
-    card.className = "card";
+    card.className = `card${dayLocked ? " card--locked" : ""}`;
     card.innerHTML = `
       <h4>${app.name}</h4>
       <p>${app.desc}</p>
@@ -947,7 +1053,7 @@ function renderApps() {
       <button type="button" class="xp-btn ${owned ? "" : "xp-btn--default"}" ${
         owned || locked || state.cash < app.price ? "disabled" : ""
       } data-buy-app="${app.id}">
-        ${owned ? "OK" : locked ? `Serve ${money(app.unlockAt)}` : "Installa"}
+        ${owned ? "OK" : dayLocked ? `Giorno ${app.unlockDay}` : cashLocked ? `Serve ${money(requiredCash)}` : "Installa"}
       </button>`;
     grid.appendChild(card);
   }
@@ -995,9 +1101,9 @@ function runHustle(id) {
     toast("Soldi insufficienti");
     return;
   }
-  state.cash -= h.cost || 0;
+  spendCash(h.cost || 0);
   const gain = rollPayout(h);
-  state.cash += gain;
+  gainCash(gain);
   state.hustleCd[id] = Date.now() + h.cooldownSec * 1000;
   addRisk(h.risk, "shop");
   pushLog(`Hustle ${h.name}: +${money(gain)}`);
@@ -1009,7 +1115,7 @@ function runHustle(id) {
   renderApps();
   renderCards();
   pushNetSync();
-  if (state.cash >= QUOTA) endGame("quota");
+  checkDayQuota();
   if (state.risk >= 92 && Math.random() < 0.2) endGame("swat");
 }
 
@@ -1045,7 +1151,7 @@ function redeemCode(raw) {
   }
   entry.redeemed = true;
   const bonus = state.combo >= 3 ? Math.round(entry.value * 0.05) : 0;
-  state.cash += entry.value + bonus;
+  gainCash(entry.value + bonus);
   addRisk(5, "shop");
   pushLog(`Riscatto ${entry.code} → ${money(entry.value)}${bonus ? ` (+${bonus} combo)` : ""}`);
   sfxRedeem();
@@ -1056,14 +1162,20 @@ function redeemCode(raw) {
   renderHustles();
   renderCards();
   pushNetSync();
-  if (state.cash >= QUOTA) endGame("quota");
+  checkDayQuota();
 }
 
 function buyApp(id) {
   const app = APPS.find((a) => a.id === id);
-  if (!app || state.apps.has(id) || state.cash < app.price) return;
-  state.cash -= app.price;
+  if (!app || state.apps.has(id)) return;
+  if (state.day < (app.unlockDay || 1)) {
+    toast(`App disponibile dal giorno ${app.unlockDay}`);
+    return;
+  }
+  if (state.cash < app.unlockAt || state.cash < app.price) return;
+  spendCash(app.price);
   state.apps.add(id);
+  persistSave();
   addRisk(app.risk, "shop");
   pushLog(`Installata ${app.name}`);
   toast(`${app.name} installata`);
@@ -1077,15 +1189,15 @@ function buyApp(id) {
 function buyCard(id) {
   const card = CARDS.find((c) => c.id === id);
   if (!card || state.cash < card.price) return;
-  state.cash -= card.price;
-  state.cash += card.payout;
+  spendCash(card.price);
+  gainCash(card.payout);
   addRisk(card.risk, "shop");
   pushLog(`${card.name}: netto ${money(card.payout - card.price)}`);
   toast("Operazione carta completata… qualcuno ti osserva.");
   renderHud();
   renderCards();
   if (state.risk >= 70 && Math.random() < 0.45) endGame("swat");
-  else if (state.cash >= QUOTA) endGame("quota");
+  else checkDayQuota();
 }
 
 function fillAiForm() {
@@ -1113,24 +1225,25 @@ function applyProviderDefaults() {
   }
 }
 
-function startShift() {
-  state.cash = 0;
+function enterDesktop() {
+  const saved = loadSave();
+  if (saved) applySave(saved);
   state.risk = 8;
   state.minute = 0;
   state.codes = [];
-  state.apps = new Set();
   state.cardsUnlocked = false;
   state.call = null;
   state.busy = false;
   state.over = false;
+  state.playing = false;
   state.openWins = new Set();
-  state.callHistory = [];
   state.combo = 0;
   state.hustleCd = {};
   loadHiscore();
   $("#wallet-log").innerHTML = "";
   renderCallHistory();
   $("#overlay").classList.add("hidden");
+  $("#overlay").setAttribute("aria-hidden", "true");
   $("#title").classList.add("hidden");
   $("#desktop").classList.remove("hidden");
   $("#desktop").setAttribute("aria-hidden", "false");
@@ -1141,6 +1254,9 @@ function startShift() {
     stopSpeaking();
     stopRingtone();
   }
+  clearInterval(state.tick);
+  state.tick = null;
+  persistSave();
   renderHud();
   renderCodes();
   renderApps();
@@ -1148,9 +1264,45 @@ function startShift() {
   renderCards();
   renderTaskbar();
   maybeShowTutorial();
+  toast(`Desktop pronto · start → Inizia partita (Giorno ${state.day})`);
+}
+
+function startShift() {
+  enterDesktop();
+}
+
+function beginMatch() {
+  if (state.playing) return;
+  state.playing = true;
+  state.over = false;
+  state.risk = 8;
+  state.minute = 0;
+  if (state.retryPending) state.dayEarned = 0;
+  state.retryPending = false;
+  state.codes = [];
+  state.combo = 0;
+  state.hustleCd = {};
+  state.call = null;
+  state.busy = false;
+  state.pendingCaller = null;
+  hideCallPopup();
+  stopSpeaking();
+  stopRingtone();
+  clearInterval(state.tick);
+  persistSave();
+
+  $("#start-menu").classList.add("hidden");
+  $("#overlay").classList.add("hidden");
+  $("#overlay").setAttribute("aria-hidden", "true");
+  renderHud();
+  renderCodes();
+  renderApps();
+  renderHustles();
+  renderCards();
+  renderTaskbar();
   clearInterval(state.tick);
   state.tick = setInterval(() => {
-    if (state.over) return;
+    if (state.over || !state.playing) return;
     state.minute += 1;
     renderHud();
     if (state.minute % 15 === 0) renderHustles();
@@ -1160,7 +1312,13 @@ function startShift() {
     if (state.minute >= 180) endGame("time");
     if (state.net?.isHost()) pushNetSync();
   }, 4000);
-  setTimeout(() => ringIncoming(), 1400);
+  pushLog(`Partita iniziata · giorno ${state.day} · quota ${money(quota())}`);
+  toast(`Giorno ${state.day}: le chiamate stanno arrivando…`);
+  updateBeginMatchButton();
+  openWindow("phone");
+  setTimeout(() => {
+    if (state.playing && !state.over) ringIncoming();
+  }, 1400);
 }
 
 function maybeShowTutorial() {
@@ -1224,11 +1382,11 @@ const mic = createMic({
 function wire() {
   $("#btn-start").addEventListener("click", startShift);
   $("#btn-settings").addEventListener("click", () => {
-    $("#title").classList.add("hidden");
-    $("#desktop").classList.remove("hidden");
+    enterDesktop();
     openWindow("settings");
   });
   $("#overlay-restart").addEventListener("click", startShift);
+  $("#btn-begin-match").addEventListener("click", beginMatch);
 
   $$(".desk-icon").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1262,7 +1420,9 @@ function wire() {
   $$("#start-menu [data-app]").forEach((btn) => {
     btn.addEventListener("click", () => openWindow(btn.dataset.app));
   });
-  $("#btn-end-shift").addEventListener("click", () => endGame("time"));
+  $("#btn-end-shift").addEventListener("click", () => {
+    if (state.playing) endGame("time");
+  });
 
   $("#btn-wait-call").addEventListener("click", () => {
     sfxClick();
@@ -1454,15 +1614,18 @@ function wire() {
 function boot() {
   initAllWindows();
   loadHiscore();
+  applySave(loadSave());
   setTalkingListener((on) => {
     $("#caller-avatar")?.classList.toggle("phone__avatar--talking", Boolean(on) && Boolean(state.call));
   });
   wire();
   fillAiForm();
   renderHud();
+  renderCallHistory();
   setTimeout(() => {
     $("#boot").classList.add("hidden");
     $("#title").classList.remove("hidden");
+    renderHud();
   }, 1600);
 }
 

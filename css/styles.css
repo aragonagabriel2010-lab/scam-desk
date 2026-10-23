@@ -599,6 +599,7 @@ button, input, select, textarea {
   box-shadow: 4px 4px 0 var(--line);
   display: flex; flex-direction: column; gap: 6px;
 }
+.card--locked { background: #f1f5f9; }
 .card h4 { margin: 0; font-size: 14px; font-family: var(--display); }
 .card p { margin: 0; color: var(--muted); flex: 1; font-size: 12px; font-weight: 600; }
 .card .price { font-family: var(--mono); color: #16a34a; font-weight: 900; }
@@ -712,6 +713,15 @@ button, input, select, textarea {
   padding: 12px 16px; cursor: pointer; color: var(--ink); font-size: 14px; font-weight: 800;
 }
 .start-menu button:hover { background: #fde68a; }
+.start-menu .start-menu__play {
+  background: #dcfce7;
+  color: #166534;
+  font-family: var(--display);
+  font-size: 16px;
+}
+.start-menu button:disabled { cursor: default; opacity: 0.7; }
+.start-menu button:disabled:hover { background: transparent; }
+.start-menu .start-menu__play:disabled:hover { background: #dcfce7; }
 .start-menu hr { border: 0; border-top: 3px dashed #cbd5e1; margin: 4px 8px; }
 
 .toast {

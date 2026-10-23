@@ -8,6 +8,7 @@ export const APPS = [
     price: 50,
     risk: 4,
     unlockAt: 0,
+    unlockDay: 1,
   },
   {
     id: "malwhere-bytes",
@@ -16,6 +17,7 @@ export const APPS = [
     price: 80,
     risk: 5,
     unlockAt: 0,
+    unlockDay: 1,
   },
   {
     id: "remote-desk",
@@ -24,6 +26,7 @@ export const APPS = [
     price: 110,
     risk: 7,
     unlockAt: 80,
+    unlockDay: 2,
   },
   {
     id: "spoof-pad",
@@ -32,6 +35,7 @@ export const APPS = [
     price: 120,
     risk: 6,
     unlockAt: 150,
+    unlockDay: 3,
   },
   {
     id: "script-pro",
@@ -40,6 +44,7 @@ export const APPS = [
     price: 90,
     risk: 3,
     unlockAt: 100,
+    unlockDay: 2,
   },
   {
     id: "crypto-bridge",
@@ -48,6 +53,7 @@ export const APPS = [
     price: 160,
     risk: 9,
     unlockAt: 200,
+    unlockDay: 3,
   },
   {
     id: "dark-drop",
@@ -56,6 +62,7 @@ export const APPS = [
     price: 200,
     risk: 10,
     unlockAt: 300,
+    unlockDay: 4,
   },
   {
     id: "mule-router",
@@ -64,6 +71,7 @@ export const APPS = [
     price: 180,
     risk: 8,
     unlockAt: 250,
+    unlockDay: 4,
   },
   {
     id: "voice-changer",
@@ -72,6 +80,7 @@ export const APPS = [
     price: 70,
     risk: 4,
     unlockAt: 50,
+    unlockDay: 1,
   },
 ];
 
@@ -175,4 +184,8 @@ export const CARDS = [
 export function rollPayout(hustle) {
   const [a, b] = hustle.payout;
   return a + Math.floor(Math.random() * (b - a + 1));
+}
+
+export function dayQuota(day) {
+  return 500 + Math.max(1, Number(day) || 1) * 100;
 }

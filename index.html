@@ -28,7 +28,7 @@
           <img class="xp-dialog__icon-img" src="assets/icons/phone.svg" alt="" width="48" height="48" />
         <div>
           <p><strong>Benvenuto nella postazione.</strong></p>
-          <p>Sei già al desk. Rispondi alle chiamate, riscatta su ScAmazzon, non farti beccare dalla SWAT.</p>
+          <p>Apri il desktop, poi premi <strong>start</strong> e scegli <strong>Inizia partita</strong> per far arrivare le chiamate.</p>
           <p class="muted">Simulatore satirico / fiction. Non usarlo per attività illegali.</p>
         </div>
       </div>
@@ -231,6 +231,7 @@
       </header>
       <div class="wallet">
         <p>Contanti: <strong id="wallet-cash">$0</strong></p>
+        <p>Giorno campagna: <strong id="wallet-day">Giorno 1</strong></p>
         <p>Codici in attesa: <strong id="wallet-codes">0</strong></p>
         <p>App: <strong id="wallet-apps">nessuna</strong></p>
         <p>Record personale: <strong id="wallet-hiscore">$0</strong></p>
@@ -241,11 +242,11 @@
       </div>
     </section>
 
-    <!-- Stato turno -->
+    <!-- Stato giornata -->
     <section id="win-stats" class="window hidden" data-window="stats" style="left:28%;top:12%;width:min(360px,90vw);">
       <header class="window__title">
         <span class="window__title-icon">📊</span>
-        <span class="window__title-text">Stato turno</span>
+        <span class="window__title-text">Stato giornata</span>
         <div class="window__controls">
           <button type="button" class="window__ctrl window__ctrl--min" data-min="stats">_</button>
           <button type="button" class="window__ctrl window__ctrl--max">□</button>
@@ -256,7 +257,8 @@
         <p class="goal-banner" id="goal-banner">Obiettivo: raggiungi $600 prima che il rischio esploda.</p>
         <table class="xp-table">
           <tr><td>Personale</td><td id="stat-cash">$0</td></tr>
-          <tr><td>Quota</td><td id="stat-quota">$0 / $600</td></tr>
+          <tr><td>Giorno</td><td id="stat-day">1</td></tr>
+          <tr><td>Quota oggi</td><td id="stat-quota">$0 / $600</td></tr>
           <tr><td>Combo codici</td><td id="stat-combo">0</td></tr>
           <tr><td>Rischio</td><td id="stat-risk">0%</td></tr>
           <tr><td>Record</td><td id="stat-hiscore">$0</td></tr>
@@ -321,9 +323,9 @@
       <div class="tutorial__card">
         <h2>Come si gioca</h2>
         <ol id="tutorial-steps">
-          <li class="is-on"><strong>1.</strong> Attendi/rispondi alle chiamate dal Telefono.</li>
+          <li class="is-on"><strong>1.</strong> Premi <strong>start</strong> e scegli <strong>Inizia partita</strong>.</li>
           <li><strong>2.</strong> Parla del problema dell’NPC, poi chiedi la gift (non subito!).</li>
-          <li><strong>3.</strong> Riscatta su ScAmazzon, tieni basso il rischio, punta a $600.</li>
+          <li><strong>3.</strong> Riscatta su ScAmazzon, tieni basso il rischio, punta alla quota del giorno.</li>
         </ol>
         <div class="tutorial__actions">
           <button type="button" id="tutorial-next" class="xp-btn xp-btn--default">Avanti</button>
@@ -375,6 +377,7 @@
       </button>
       <div class="taskbar__apps" id="taskbar-apps"></div>
       <div class="taskbar__tray">
+        <span id="tray-day" title="Giorno campagna">G1</span>
         <span id="tray-risk" title="Rischio">⚠ 0%</span>
         <span id="tray-cash">$0</span>
         <span id="tray-clock" class="taskbar__clock">9:00 AM</span>
@@ -383,14 +386,16 @@
 
     <div id="start-menu" class="start-menu hidden">
       <div class="start-menu__user">SCAM DESK User</div>
+      <button type="button" id="btn-begin-match" class="start-menu__play">▶ Inizia partita</button>
+      <hr />
       <button type="button" data-app="phone">📞 Telefono</button>
       <button type="button" data-app="scamazzon">🛒 ScAmazzon</button>
       <button type="button" data-app="wallet">💰 Portafoglio</button>
-      <button type="button" data-app="stats">📊 Stato turno</button>
+      <button type="button" data-app="stats">📊 Stato giornata</button>
       <button type="button" data-app="settings">⚙ Impostazioni AI</button>
       <button type="button" data-app="net">🌐 Rete co-op</button>
       <hr />
-      <button type="button" id="btn-end-shift">⏹ Termina turno</button>
+      <button type="button" id="btn-end-shift">⏹ Chiudi giornata</button>
     </div>
   </div>
 
