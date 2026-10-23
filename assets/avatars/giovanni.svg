@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)" stroke="#1e293b" stroke-width="6"/>
+  <circle cx="64" cy="58" r="28" fill="#e8c4a8" stroke="#1e293b" stroke-width="3"/>
+  <path d="M38 48c6-18 46-18 52 0" fill="#1e293b"/>
+  <rect x="40" y="52" width="48" height="8" rx="2" fill="#111" opacity=".85"/>
+  <circle cx="52" cy="60" r="3" fill="#1e293b"/>
+  <circle cx="76" cy="60" r="3" fill="#1e293b"/>
+  <path d="M56 74h16" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M34 106c10-18 50-18 60 0" fill="#334155" stroke="#1e293b" stroke-width="2"/>
+  <text x="64" y="118" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="Nunito,Arial">CEO?</text>
+</svg>

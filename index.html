@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SCAM DESK — Call Center</title>
+  <meta name="description" content="Simulatore satirico di call center. Parodia." />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+</head>
+<body>
+  <div id="boot" class="boot" aria-live="polite">
+    <div class="boot__box">
+      <div class="boot__logo">SCAM<span>DESK</span><em>★</em></div>
+      <p class="boot__sub">Cartoon Call Center</p>
+      <div class="boot__bar"><i></i></div>
+      <p class="boot__copy">Fiction Soft · Non è Windows vero · Solo satira</p>
+    </div>
+  </div>
+
+  <div id="title" class="title-screen hidden">
+    <div class="xp-dialog">
+      <div class="xp-dialog__title">
+        <span>SCAM DESK</span>
+        <button type="button" class="xp-btn-close" tabindex="-1" aria-hidden="true">×</button>
+      </div>
+      <div class="xp-dialog__body">
+          <img class="xp-dialog__icon-img" src="assets/icons/phone.svg" alt="" width="48" height="48" />
+        <div>
+          <p><strong>Benvenuto nella postazione.</strong></p>
+          <p>Sei già al desk. Rispondi alle chiamate, riscatta su ScAmazzon, non farti beccare dalla SWAT.</p>
+          <p class="muted">Simulatore satirico / fiction. Non usarlo per attività illegali.</p>
+        </div>
+      </div>
+      <p class="title-hiscore muted" id="title-hiscore">Record: $0</p>
+      <div class="xp-dialog__actions">
+        <button type="button" id="btn-start" class="xp-btn xp-btn--default">Inizia il turno</button>
+        <button type="button" id="btn-settings" class="xp-btn">Impostazioni AI</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="desktop" class="desktop hidden" aria-hidden="true">
+    <div class="desktop__brand" aria-hidden="true">SCAM DESK</div>
+    <div class="desktop__icons" id="desktop-icons">
+      <button type="button" class="desk-icon" data-app="phone">
+        <img class="desk-icon__img" src="assets/icons/phone.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">Telefono</span>
+        <i id="phone-badge" class="desk-icon__badge hidden">!</i>
+      </button>
+      <button type="button" class="desk-icon" data-app="scamazzon">
+        <img class="desk-icon__img" src="assets/icons/shop.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">ScAmazzon</span>
+      </button>
+      <button type="button" class="desk-icon" data-app="wallet">
+        <img class="desk-icon__img" src="assets/icons/wallet.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">Portafoglio</span>
+      </button>
+      <button type="button" class="desk-icon" data-app="stats">
+        <img class="desk-icon__img" src="assets/icons/stats.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">Stato turno</span>
+      </button>
+      <button type="button" class="desk-icon" data-app="settings">
+        <img class="desk-icon__img" src="assets/icons/gear.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">Impostazioni AI</span>
+      </button>
+      <button type="button" class="desk-icon" data-app="net">
+        <img class="desk-icon__img" src="assets/icons/stats.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">Rete co-op</span>
+      </button>
+      <button type="button" class="desk-icon" data-app="recycle">
+        <img class="desk-icon__img" src="assets/icons/recycle.svg" alt="" width="48" height="48" />
+        <span class="desk-icon__label">Cestino</span>
+      </button>
+    </div>
+
+    <!-- Telefono -->
+    <section id="win-phone" class="window hidden" data-window="phone" style="left:12%;top:8%;width:min(720px,90vw);">
+      <header class="window__title">
+        <span class="window__title-icon" aria-hidden="true">📞</span>
+        <span class="window__title-text">Telefono - SCAM DESK</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--min" data-min="phone" aria-label="Riduci">_</button>
+          <button type="button" class="window__ctrl window__ctrl--max" aria-label="Ingrandisci">□</button>
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="phone" aria-label="Chiudi">×</button>
+        </div>
+      </header>
+      <div class="window__menubar">
+        <span>File</span><span>Modifica</span><span>Visualizza</span><span>?</span>
+      </div>
+      <div class="phone">
+        <div class="phone__trust">
+          <span>Fiducia del chiamante</span>
+          <strong id="call-trust-label">—</strong>
+          <div class="phone__trust-bar"><div id="call-trust-fill"></div></div>
+          <p id="call-trust-hint" class="phone__trust-hint muted">Chiedi del suo problema prima della gift.</p>
+        </div>
+        <div class="phone__body">
+          <aside class="phone__caller">
+            <div id="caller-avatar" class="phone__avatar phone__avatar--idle" aria-hidden="true">
+              <img id="caller-avatar-img" class="phone__avatar-img hidden" alt="" />
+              <span id="caller-avatar-fallback">?</span>
+            </div>
+            <h2 id="caller-name">In attesa…</h2>
+            <p id="caller-meta" class="muted">Nessuna chiamata attiva</p>
+            <div id="caller-vibe" class="phone__vibe muted hidden"></div>
+          </aside>
+          <div class="phone__chat">
+            <div id="chat-empty" class="phone__empty">
+              <div class="phone__empty-art" aria-hidden="true">📞</div>
+              <p><strong>Nessuna chiamata</strong></p>
+              <p class="muted">Premi «Attendi chiamata» e rispondi al popup.</p>
+            </div>
+            <div id="chat-log" class="phone__log" role="log" aria-live="polite"></div>
+            <form id="chat-form" class="phone__compose">
+              <button type="button" id="btn-mic" class="xp-btn xp-btn--mic" disabled title="Muta / smutina microfono">🎤 Mic ON</button>
+              <input id="chat-input" type="text" placeholder="Digita o parla, poi Invia…" autocomplete="off" disabled />
+              <button type="submit" class="xp-btn xp-btn--default" disabled id="chat-send">Invia</button>
+            </form>
+            <p id="mic-status" class="mic-status muted"></p>
+          </div>
+        </div>
+        <footer class="phone__actions">
+          <button type="button" id="btn-hangup" class="xp-btn xp-btn--danger" disabled>Riagganciare</button>
+          <button type="button" id="btn-wait-call" class="xp-btn">Attendi chiamata</button>
+          <button type="button" id="btn-tts" class="xp-btn" title="Audio risposte chiamante">🔊 Audio ON</button>
+        </footer>
+      </div>
+      <div class="window__statusbar"><span id="phone-status">Pronto</span></div>
+    </section>
+
+    <!-- ScAmazzon -->
+    <section id="win-scamazzon" class="window hidden" data-window="scamazzon" style="left:18%;top:10%;width:min(640px,92vw);">
+      <header class="window__title">
+        <span class="window__title-icon">🛒</span>
+        <span class="window__title-text">ScAmazzon</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--min" data-min="scamazzon" aria-label="Riduci">_</button>
+          <button type="button" class="window__ctrl window__ctrl--max" aria-label="Ingrandisci">□</button>
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="scamazzon" aria-label="Chiudi">×</button>
+        </div>
+      </header>
+      <div class="shop">
+        <div class="shop__tabs">
+          <button type="button" class="shop__tab is-active" data-shop-tab="redeem">Riscatta codici</button>
+          <button type="button" class="shop__tab" data-shop-tab="apps">App</button>
+          <button type="button" class="shop__tab" data-shop-tab="hustle">Hustle</button>
+          <button type="button" class="shop__tab" data-shop-tab="cards">Carte</button>
+        </div>
+        <div class="shop__hero">
+          <div class="shop__hero-logo">Sc<span>Amazzon</span></div>
+          <p class="shop__hero-tag">Tutto ciò che… non dovresti riscattare</p>
+        </div>
+        <div id="shop-redeem" class="shop__panel">
+          <fieldset>
+            <legend>Riscatta gift card</legend>
+            <p class="muted">Incolla i codici delle chiamate. Ogni riscatto alza il rischio.</p>
+            <ul id="code-list" class="shop__codes"></ul>
+            <form id="redeem-form" class="shop__redeem">
+              <input id="redeem-input" type="text" placeholder="XXXX-XXXX-XXXX" maxlength="24" />
+              <button type="submit" class="xp-btn xp-btn--default">Riscatta</button>
+            </form>
+          </fieldset>
+        </div>
+        <div id="shop-apps" class="shop__panel hidden">
+          <fieldset>
+            <legend>Installa strumenti</legend>
+            <p class="muted">MalWhereBytes, remote fake, crypto… tutto satira da call center.</p>
+            <div id="app-grid" class="shop__grid"></div>
+          </fieldset>
+        </div>
+        <div id="shop-hustle" class="shop__panel hidden">
+          <fieldset>
+            <legend>Altri modi (fiction)</legend>
+            <p class="muted">Cooldownioni a cooldown. Alcune richiedono un’app installata.</p>
+            <div id="hustle-grid" class="shop__grid"></div>
+          </fieldset>
+        </div>
+        <div id="shop-cards" class="shop__panel hidden">
+          <fieldset>
+            <legend>Carte di credito</legend>
+            <p class="muted" id="cards-lock">Sblocca con ~$400 guadagnati o DarkDrop.</p>
+            <div id="card-grid" class="shop__grid hidden"></div>
+          </fieldset>
+        </div>
+      </div>
+    </section>
+
+    <!-- Rete multiplayer -->
+    <section id="win-net" class="window hidden" data-window="net" style="left:24%;top:12%;width:min(440px,92vw);">
+      <header class="window__title">
+        <span class="window__title-icon">🌐</span>
+        <span class="window__title-text">Rete co-op</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--min" data-min="net">_</button>
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="net">×</button>
+        </div>
+      </header>
+      <div class="wallet net-panel">
+        <p class="muted">Stesso desk, cassa e rischio condivisi (host = autorità). Serve internet.</p>
+        <label>Il tuo nome
+          <input id="net-name" type="text" maxlength="18" placeholder="Operatore42" />
+        </label>
+        <div class="settings__row" style="margin-top:10px">
+          <button type="button" id="net-host" class="xp-btn xp-btn--default">Crea stanza</button>
+          <button type="button" id="net-leave" class="xp-btn">Esci</button>
+        </div>
+        <label style="margin-top:10px">Codice stanza
+          <div class="shop__redeem">
+            <input id="net-code" type="text" maxlength="8" placeholder="ABC12" />
+            <button type="button" id="net-join" class="xp-btn">Entra</button>
+          </div>
+        </label>
+        <p id="net-status" class="settings__status">Offline</p>
+        <p>Codice attivo: <strong id="net-room">—</strong></p>
+        <h3 class="wallet__h">In stanza</h3>
+        <ul id="net-roster" class="wallet__log"></ul>
+      </div>
+    </section>
+
+    <!-- Portafoglio -->
+    <section id="win-wallet" class="window hidden" data-window="wallet" style="left:22%;top:14%;width:min(420px,90vw);">
+      <header class="window__title">
+        <span class="window__title-icon">💰</span>
+        <span class="window__title-text">Portafoglio</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--min" data-min="wallet">_</button>
+          <button type="button" class="window__ctrl window__ctrl--max">□</button>
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="wallet">×</button>
+        </div>
+      </header>
+      <div class="wallet">
+        <p>Contanti: <strong id="wallet-cash">$0</strong></p>
+        <p>Codici in attesa: <strong id="wallet-codes">0</strong></p>
+        <p>App: <strong id="wallet-apps">nessuna</strong></p>
+        <p>Record personale: <strong id="wallet-hiscore">$0</strong></p>
+        <h3 class="wallet__h">Storico chiamate</h3>
+        <ul id="call-history" class="wallet__log"></ul>
+        <h3 class="wallet__h">Log</h3>
+        <ul id="wallet-log" class="wallet__log"></ul>
+      </div>
+    </section>
+
+    <!-- Stato turno -->
+    <section id="win-stats" class="window hidden" data-window="stats" style="left:28%;top:12%;width:min(360px,90vw);">
+      <header class="window__title">
+        <span class="window__title-icon">📊</span>
+        <span class="window__title-text">Stato turno</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--min" data-min="stats">_</button>
+          <button type="button" class="window__ctrl window__ctrl--max">□</button>
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="stats">×</button>
+        </div>
+      </header>
+      <div class="stats-panel">
+        <p class="goal-banner" id="goal-banner">Obiettivo: raggiungi $600 prima che il rischio esploda.</p>
+        <table class="xp-table">
+          <tr><td>Personale</td><td id="stat-cash">$0</td></tr>
+          <tr><td>Quota</td><td id="stat-quota">$0 / $600</td></tr>
+          <tr><td>Combo codici</td><td id="stat-combo">0</td></tr>
+          <tr><td>Rischio</td><td id="stat-risk">0%</td></tr>
+          <tr><td>Record</td><td id="stat-hiscore">$0</td></tr>
+          <tr><td>Ora</td><td id="stat-time">09:00</td></tr>
+        </table>
+        <label class="risk-label">Livello rischio
+          <div class="hud__meter"><div id="risk-fill" class="hud__meter-fill"></div></div>
+        </label>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="win-settings" class="window hidden" data-window="settings" style="left:20%;top:10%;width:min(480px,92vw);">
+      <header class="window__title">
+        <span class="window__title-icon">⚙</span>
+        <span class="window__title-text">Impostazioni AI</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--min" data-min="settings">_</button>
+          <button type="button" class="window__ctrl window__ctrl--max">□</button>
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="settings">×</button>
+        </div>
+      </header>
+      <form id="ai-form" class="settings">
+        <p class="muted">Opzionale. I modelli <strong>free piccoli</strong> confondono spesso i ruoli: meglio Gemma 9B+, Gemini Flash, o Ollama locale (qwen2.5:7b).</p>
+        <label>Provider
+          <select id="ai-provider">
+            <option value="off">Solo script</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Ollama locale</option>
+          </select>
+        </label>
+        <label>Base URL
+          <input id="ai-base" type="url" placeholder="https://openrouter.ai/api/v1" />
+        </label>
+        <label>Model ID
+          <input id="ai-model" type="text" list="ai-model-hints" placeholder="google/gemma-2-9b-it:free" />
+          <datalist id="ai-model-hints">
+            <option value="google/gemma-2-9b-it:free"></option>
+            <option value="meta-llama/llama-3.3-70b-instruct:free"></option>
+            <option value="gemini-2.0-flash"></option>
+            <option value="qwen2.5:7b"></option>
+          </datalist>
+        </label>
+        <label>API key
+          <input id="ai-key" type="password" autocomplete="off" />
+        </label>
+        <label>Velocità voce NPC
+          <input id="tts-rate" type="range" min="70" max="140" value="100" />
+        </label>
+        <label class="settings__check"><input id="sfx-mute" type="checkbox" /> Muta effetti sonori</label>
+        <div class="settings__row">
+          <button type="submit" class="xp-btn xp-btn--default">Salva</button>
+          <button type="button" id="ai-test" class="xp-btn">Test</button>
+          <button type="button" id="btn-script-only" class="xp-btn" title="Disattiva AI al volo">Solo script</button>
+        </div>
+        <p id="ai-status" class="settings__status" role="status"></p>
+      </form>
+    </section>
+
+    <div id="tutorial" class="tutorial hidden" role="dialog" aria-label="Tutorial">
+      <div class="tutorial__card">
+        <h2>Come si gioca</h2>
+        <ol id="tutorial-steps">
+          <li class="is-on"><strong>1.</strong> Attendi/rispondi alle chiamate dal Telefono.</li>
+          <li><strong>2.</strong> Parla del problema dell’NPC, poi chiedi la gift (non subito!).</li>
+          <li><strong>3.</strong> Riscatta su ScAmazzon, tieni basso il rischio, punta a $600.</li>
+        </ol>
+        <div class="tutorial__actions">
+          <button type="button" id="tutorial-next" class="xp-btn xp-btn--default">Avanti</button>
+          <button type="button" id="tutorial-skip" class="xp-btn">Salta</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cestino joke -->
+    <section id="win-recycle" class="window hidden" data-window="recycle" style="left:30%;top:20%;width:min(340px,90vw);">
+      <header class="window__title">
+        <span class="window__title-icon">🗑</span>
+        <span class="window__title-text">Cestino</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="recycle">×</button>
+        </div>
+      </header>
+      <div class="wallet">
+        <p>Il cestino è vuoto.</p>
+        <p class="muted">(Qui finiscono le prove. In teoria.)</p>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <div id="call-popup" class="call-popup hidden" role="dialog" aria-label="Chiamata in arrivo">
+      <div class="call-popup__title">
+        <span>Telefono</span>
+        <button type="button" id="call-popup-x" class="window__ctrl window__ctrl--close" aria-label="Chiudi">×</button>
+      </div>
+      <div class="call-popup__body">
+        <div class="call-popup__avatar">
+          <img id="call-popup-avatar-img" class="call-popup__avatar-img" alt="" />
+        </div>
+        <div>
+          <p class="call-popup__ring">Chiamata in arrivo…</p>
+          <p id="call-popup-name" class="call-popup__name">Sconosciuto</p>
+        </div>
+      </div>
+      <div class="call-popup__actions">
+        <button type="button" id="call-popup-accept" class="xp-btn xp-btn--default">Rispondi</button>
+        <button type="button" id="call-popup-reject" class="xp-btn">Rifiuta</button>
+      </div>
+    </div>
+
+    <footer class="taskbar">
+      <button type="button" id="btn-start-menu" class="taskbar__start">
+        <span class="taskbar__start-flag"></span> start
+      </button>
+      <div class="taskbar__apps" id="taskbar-apps"></div>
+      <div class="taskbar__tray">
+        <span id="tray-risk" title="Rischio">⚠ 0%</span>
+        <span id="tray-cash">$0</span>
+        <span id="tray-clock" class="taskbar__clock">9:00 AM</span>
+      </div>
+    </footer>
+
+    <div id="start-menu" class="start-menu hidden">
+      <div class="start-menu__user">SCAM DESK User</div>
+      <button type="button" data-app="phone">📞 Telefono</button>
+      <button type="button" data-app="scamazzon">🛒 ScAmazzon</button>
+      <button type="button" data-app="wallet">💰 Portafoglio</button>
+      <button type="button" data-app="stats">📊 Stato turno</button>
+      <button type="button" data-app="settings">⚙ Impostazioni AI</button>
+      <button type="button" data-app="net">🌐 Rete co-op</button>
+      <hr />
+      <button type="button" id="btn-end-shift">⏹ Termina turno</button>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay hidden" aria-hidden="true">
+    <div class="xp-dialog">
+      <div class="xp-dialog__title"><span id="overlay-title">Fine turno</span></div>
+      <div class="xp-dialog__body">
+        <div class="xp-dialog__icon">⚠</div>
+        <p id="overlay-body"></p>
+      </div>
+      <div class="xp-dialog__actions">
+        <button type="button" id="overlay-restart" class="xp-btn xp-btn--default">Nuovo turno</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
