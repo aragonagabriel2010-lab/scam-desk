@@ -5,6 +5,9 @@ export const APPS = [
     id: "gift-washer",
     name: "GiftWasher",
     desc: "Pulisce e liquida gift card più in fretta (+10% valore).",
+    deskBlurb: "Lavatrice di codici in ascolto. +10% sui riscatto gift.",
+    emoji: "🧼",
+    color: "#67e8f9",
     price: 50,
     risk: 4,
     unlockAt: 0,
@@ -14,15 +17,45 @@ export const APPS = [
     id: "malwhere-bytes",
     name: "MalWhereBytes",
     desc: "Finto antivirus “ufficiale”. +fiducia in chiamata, ma alza un po’ il rischio rete.",
+    deskBlurb: "Scudo verde lampeggiante. Le vittime si fidano di più.",
+    emoji: "🛡",
+    color: "#86efac",
     price: 80,
     risk: 5,
     unlockAt: 0,
     unlockDay: 1,
   },
   {
+    id: "voice-changer",
+    name: "VoiceChanger",
+    desc: "Voce da “agente Microsoft”. Piccolo boost fiducia a inizio chiamata.",
+    deskBlurb: "Pitch shifter da call center. Suoni ‘ufficiale’.",
+    emoji: "🎙️",
+    color: "#c4b5fd",
+    price: 70,
+    risk: 4,
+    unlockAt: 0,
+    unlockDay: 1,
+  },
+  {
+    id: "script-pro",
+    name: "ScriptPro 3000",
+    desc: "Suggerimenti in chat (hint automatici). Meno errori da principiante.",
+    deskBlurb: "Prompt sul telefono: problema → antivirus → gift.",
+    emoji: "📜",
+    color: "#fde68a",
+    price: 90,
+    risk: 3,
+    unlockAt: 50,
+    unlockDay: 2,
+  },
+  {
     id: "remote-desk",
     name: "AnyDesk’t (fake)",
     desc: "Simula sessione remota. Fiducia più veloce se parli di “tecnico”.",
+    deskBlurb: "Finta sessione remota. Pixel che mentono.",
+    emoji: "🖥",
+    color: "#fdba74",
     price: 110,
     risk: 7,
     unlockAt: 80,
@@ -32,55 +65,61 @@ export const APPS = [
     id: "spoof-pad",
     name: "SpoofPad",
     desc: "Maschera il caller ID. Riduce il rischio delle chiamate.",
+    deskBlurb: "Maschera numero. Meno rischio in chiamata.",
+    emoji: "🎭",
+    color: "#f9a8d4",
     price: 120,
     risk: 6,
-    unlockAt: 150,
-    unlockDay: 3,
-  },
-  {
-    id: "script-pro",
-    name: "ScriptPro 3000",
-    desc: "Suggerimenti in chat (hint automatici). Meno errori da principiante.",
-    price: 90,
-    risk: 3,
     unlockAt: 100,
-    unlockDay: 2,
+    unlockDay: 3,
   },
   {
     id: "crypto-bridge",
     name: "CryptoBridge",
     desc: "Converte cash in “coin” e viceversa. Fee basse, odore di pepe alto.",
+    deskBlurb: "Bridge fiat↔coin. Fee basse, pepe alto.",
+    emoji: "🌉",
+    color: "#a3e635",
     price: 160,
     risk: 9,
-    unlockAt: 200,
+    unlockAt: 150,
     unlockDay: 3,
-  },
-  {
-    id: "dark-drop",
-    name: "DarkDrop",
-    desc: "Canale per muovere soldi. Sblocca carte di credito.",
-    price: 200,
-    risk: 10,
-    unlockAt: 300,
-    unlockDay: 4,
   },
   {
     id: "mule-router",
     name: "MuleRouter",
     desc: "Smista guadagni su “conti mulo” finti. −rischio shop, +rischio tempo.",
+    deskBlurb: "Smista sul mulo. Shop più quieto, tempo più rumoroso.",
+    emoji: "🫏",
+    color: "#d6d3d1",
     price: 180,
     risk: 8,
+    unlockAt: 200,
+    unlockDay: 4,
+  },
+  {
+    id: "dark-drop",
+    name: "DarkDrop",
+    desc: "Canale per muovere soldi. Sblocca carte di credito.",
+    deskBlurb: "Drop notturno. Sblocca le carte di credito.",
+    emoji: "🌑",
+    color: "#64748b",
+    price: 200,
+    risk: 10,
     unlockAt: 250,
     unlockDay: 4,
   },
   {
-    id: "voice-changer",
-    name: "VoiceChanger",
-    desc: "Voce da “agente Microsoft”. Piccolo boost fiducia a inizio chiamata.",
-    price: 70,
-    risk: 4,
-    unlockAt: 50,
-    unlockDay: 1,
+    id: "night-shift",
+    name: "NightShift VPN",
+    desc: "Sbloccata dal giorno 5. −rischio eventi serali.",
+    deskBlurb: "VPN viola. Eventi serali meno aggressivi.",
+    emoji: "🌙",
+    color: "#818cf8",
+    price: 220,
+    risk: 6,
+    unlockAt: 300,
+    unlockDay: 5,
   },
 ];
 
@@ -94,6 +133,7 @@ export const HUSTLES = [
     payout: [40, 90],
     risk: 8,
     cooldownSec: 45,
+    unlockDay: 1,
   },
   {
     id: "tech-support",
@@ -104,6 +144,7 @@ export const HUSTLES = [
     risk: 6,
     cooldownSec: 35,
     needApp: "malwhere-bytes",
+    unlockDay: 1,
   },
   {
     id: "wire-transfer",
@@ -113,6 +154,7 @@ export const HUSTLES = [
     payout: [80, 160],
     risk: 16,
     cooldownSec: 70,
+    unlockDay: 2,
   },
   {
     id: "crypto-drain",
@@ -123,6 +165,7 @@ export const HUSTLES = [
     risk: 18,
     cooldownSec: 80,
     needApp: "crypto-bridge",
+    unlockDay: 3,
   },
   {
     id: "sim-swap",
@@ -133,6 +176,7 @@ export const HUSTLES = [
     risk: 22,
     cooldownSec: 90,
     needApp: "spoof-pad",
+    unlockDay: 3,
   },
   {
     id: "mule-cashout",
@@ -143,6 +187,7 @@ export const HUSTLES = [
     risk: 10,
     cooldownSec: 55,
     needApp: "mule-router",
+    unlockDay: 4,
   },
 ];
 
@@ -154,6 +199,7 @@ export const CARDS = [
     price: 250,
     risk: 18,
     payout: 180,
+    unlockDay: 2,
   },
   {
     id: "clone-kit",
@@ -162,6 +208,7 @@ export const CARDS = [
     price: 400,
     risk: 28,
     payout: 320,
+    unlockDay: 3,
   },
   {
     id: "nfc-tap",
@@ -170,6 +217,7 @@ export const CARDS = [
     price: 320,
     risk: 22,
     payout: 250,
+    unlockDay: 4,
   },
   {
     id: "loan-stack",
@@ -178,14 +226,16 @@ export const CARDS = [
     price: 500,
     risk: 35,
     payout: 420,
+    unlockDay: 5,
   },
 ];
+
+export function dayQuota(day) {
+  const d = Math.max(1, Number(day) || 1);
+  return 500 + d * 100;
+}
 
 export function rollPayout(hustle) {
   const [a, b] = hustle.payout;
   return a + Math.floor(Math.random() * (b - a + 1));
-}
-
-export function dayQuota(day) {
-  return 500 + Math.max(1, Number(day) || 1) * 100;
 }

@@ -28,13 +28,14 @@
           <img class="xp-dialog__icon-img" src="assets/icons/phone.svg" alt="" width="48" height="48" />
         <div>
           <p><strong>Benvenuto nella postazione.</strong></p>
-          <p>Apri il desktop, poi premi <strong>start</strong> e scegli <strong>Inizia partita</strong> per far arrivare le chiamate.</p>
+          <p>Apri il desktop, poi premi il tasto <strong>start</strong> in basso a sinistra e scegli <strong>Inizia partita</strong> per far arrivare le chiamate.</p>
           <p class="muted">Simulatore satirico / fiction. Non usarlo per attività illegali.</p>
         </div>
       </div>
       <p class="title-hiscore muted" id="title-hiscore">Record: $0</p>
       <div class="xp-dialog__actions">
-        <button type="button" id="btn-start" class="xp-btn xp-btn--default">Inizia il turno</button>
+        <button type="button" id="btn-start" class="xp-btn xp-btn--default">Apri desktop</button>
+        <button type="button" id="btn-new-campaign" class="xp-btn">Nuova campagna</button>
         <button type="button" id="btn-settings" class="xp-btn">Impostazioni AI</button>
       </div>
     </div>
@@ -58,7 +59,7 @@
       </button>
       <button type="button" class="desk-icon" data-app="stats">
         <img class="desk-icon__img" src="assets/icons/stats.svg" alt="" width="48" height="48" />
-        <span class="desk-icon__label">Stato turno</span>
+        <span class="desk-icon__label">Stato giornata</span>
       </button>
       <button type="button" class="desk-icon" data-app="settings">
         <img class="desk-icon__img" src="assets/icons/gear.svg" alt="" width="48" height="48" />
@@ -85,16 +86,18 @@
           <button type="button" class="window__ctrl window__ctrl--close" data-close="phone" aria-label="Chiudi">×</button>
         </div>
       </header>
-      <div class="window__menubar">
-        <span>File</span><span>Modifica</span><span>Visualizza</span><span>?</span>
-      </div>
       <div class="phone">
         <div class="phone__trust">
-          <span>Fiducia del chiamante</span>
+          <div class="phone__trust-top">
+            <span>Fiducia del chiamante</span>
+            <strong id="call-timer" class="phone__timer">00:00</strong>
+          </div>
           <strong id="call-trust-label">—</strong>
           <div class="phone__trust-bar"><div id="call-trust-fill"></div></div>
           <p id="call-trust-hint" class="phone__trust-hint muted">Chiedi del suo problema prima della gift.</p>
+          <p id="call-persona-hint" class="phone__persona muted hidden"></p>
         </div>
+        <div id="remote-banner" class="remote-banner hidden">AnyDesk’t — un collega sta guidando la tua postazione</div>
         <div class="phone__body">
           <aside class="phone__caller">
             <div id="caller-avatar" class="phone__avatar phone__avatar--idle" aria-hidden="true">
@@ -108,8 +111,8 @@
           <div class="phone__chat">
             <div id="chat-empty" class="phone__empty">
               <div class="phone__empty-art" aria-hidden="true">📞</div>
-              <p><strong>Nessuna chiamata</strong></p>
-              <p class="muted">Premi «Attendi chiamata» e rispondi al popup.</p>
+              <p><strong>Linea libera</strong></p>
+              <p class="muted">Attendi una chiamata, costruisci fiducia, poi chiedi la gift. Il microfono parla solo nella TUA chat.</p>
             </div>
             <div id="chat-log" class="phone__log" role="log" aria-live="polite"></div>
             <form id="chat-form" class="phone__compose">
@@ -179,7 +182,7 @@
         <div id="shop-cards" class="shop__panel hidden">
           <fieldset>
             <legend>Carte di credito</legend>
-            <p class="muted" id="cards-lock">Sblocca con ~$400 guadagnati o DarkDrop.</p>
+            <p class="muted" id="cards-lock">Dal giorno 2: serve DarkDrop o $400 in cassa.</p>
             <div id="card-grid" class="shop__grid hidden"></div>
           </fieldset>
         </div>
@@ -197,7 +200,7 @@
         </div>
       </header>
       <div class="wallet net-panel">
-        <p class="muted">Stesso desk, cassa e rischio condivisi (host = autorità). Serve internet.</p>
+        <p class="muted">Ognuno ha il proprio PC. Puoi <strong>guardare</strong> lo schermo altrui (e sentire la loro chiamata). Con <strong>AnyDesk’t</strong> installato puoi chiedere il controllo remoto.</p>
         <label>Il tuo nome
           <input id="net-name" type="text" maxlength="18" placeholder="Operatore42" />
         </label>
@@ -214,7 +217,57 @@
         <p id="net-status" class="settings__status">Offline</p>
         <p>Codice attivo: <strong id="net-room">—</strong></p>
         <h3 class="wallet__h">In stanza</h3>
-        <ul id="net-roster" class="wallet__log"></ul>
+        <p class="muted" style="margin:0 0 6px">Guarda schermo = sola visione. Non puoi cliccare né parlare al posto loro.</p>
+        <ul id="net-roster" class="wallet__log net-roster"></ul>
+      </div>
+    </section>
+
+    <!-- Spectate collega (sola lettura) -->
+    <section id="win-spectate" class="window hidden" data-window="spectate" style="left:10%;top:6%;width:min(680px,94vw);">
+      <header class="window__title">
+        <span class="window__title-icon">👁</span>
+        <span class="window__title-text" id="spectate-title">Spectate</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="spectate">×</button>
+        </div>
+      </header>
+      <div class="spectate">
+        <div class="spectate__banner" id="spectate-mode-banner">SOLO VISIONE — senti la loro linea, non puoi interagire</div>
+        <div class="spectate__hud">
+          <span id="spec-day">G1</span>
+          <span id="spec-cash">$0</span>
+          <span id="spec-risk">⚠ 0%</span>
+          <span id="spec-time">—</span>
+        </div>
+        <div class="spectate__phone">
+          <aside class="spectate__caller">
+            <img id="spec-avatar" class="spectate__avatar" alt="" />
+            <strong id="spec-caller">Nessuna chiamata</strong>
+            <p id="spec-meta" class="muted">In attesa di sync…</p>
+            <div class="phone__trust-bar"><div id="spec-trust-fill"></div></div>
+          </aside>
+          <div id="spec-chat" class="spectate__chat" role="log"></div>
+        </div>
+        <form id="spec-remote-form" class="spectate__remote hidden">
+          <input id="spec-remote-input" type="text" placeholder="Scrivi al posto loro…" maxlength="240" />
+          <button type="submit" class="xp-btn xp-btn--default">Invia (remoto)</button>
+          <button type="button" id="spec-remote-hangup" class="xp-btn xp-btn--danger">Riaggancia</button>
+        </form>
+        <p id="spec-status" class="muted spectate__foot">Apri Rete co-op → Guarda / AnyDesk’t</p>
+      </div>
+    </section>
+
+    <!-- Finestra tool installato -->
+    <section id="win-tool" class="window hidden" data-window="tool" style="left:30%;top:18%;width:min(360px,90vw);">
+      <header class="window__title">
+        <span class="window__title-icon" id="tool-icon">🛠</span>
+        <span class="window__title-text" id="tool-title">Tool</span>
+        <div class="window__controls">
+          <button type="button" class="window__ctrl window__ctrl--close" data-close="tool">×</button>
+        </div>
+      </header>
+      <div class="wallet" id="tool-body">
+        <p class="muted">App installata.</p>
       </div>
     </section>
 
@@ -230,8 +283,8 @@
         </div>
       </header>
       <div class="wallet">
+        <p>Campagna: <strong id="wallet-day">Giorno 1</strong></p>
         <p>Contanti: <strong id="wallet-cash">$0</strong></p>
-        <p>Giorno campagna: <strong id="wallet-day">Giorno 1</strong></p>
         <p>Codici in attesa: <strong id="wallet-codes">0</strong></p>
         <p>App: <strong id="wallet-apps">nessuna</strong></p>
         <p>Record personale: <strong id="wallet-hiscore">$0</strong></p>
@@ -242,7 +295,7 @@
       </div>
     </section>
 
-    <!-- Stato giornata -->
+    <!-- Stato turno -->
     <section id="win-stats" class="window hidden" data-window="stats" style="left:28%;top:12%;width:min(360px,90vw);">
       <header class="window__title">
         <span class="window__title-icon">📊</span>
@@ -254,16 +307,19 @@
         </div>
       </header>
       <div class="stats-panel">
-        <p class="goal-banner" id="goal-banner">Obiettivo: raggiungi $600 prima che il rischio esploda.</p>
+        <p class="goal-banner" id="goal-banner">Obiettivo: quota giornaliera. I soldi restano tra un giorno e l’altro.</p>
+        <p class="story-banner muted hidden" id="story-banner"></p>
         <table class="xp-table">
-          <tr><td>Personale</td><td id="stat-cash">$0</td></tr>
           <tr><td>Giorno</td><td id="stat-day">1</td></tr>
+          <tr><td>Cassa totale</td><td id="stat-cash">$0</td></tr>
           <tr><td>Quota oggi</td><td id="stat-quota">$0 / $600</td></tr>
           <tr><td>Combo codici</td><td id="stat-combo">0</td></tr>
           <tr><td>Rischio</td><td id="stat-risk">0%</td></tr>
           <tr><td>Record</td><td id="stat-hiscore">$0</td></tr>
           <tr><td>Ora</td><td id="stat-time">09:00</td></tr>
         </table>
+        <h3 class="wallet__h">Bonus giornata (premio a fine)</h3>
+        <ul id="day-objectives" class="wallet__log obj-list"></ul>
         <label class="risk-label">Livello rischio
           <div class="hud__meter"><div id="risk-fill" class="hud__meter-fill"></div></div>
         </label>
@@ -323,9 +379,10 @@
       <div class="tutorial__card">
         <h2>Come si gioca</h2>
         <ol id="tutorial-steps">
-          <li class="is-on"><strong>1.</strong> Partita avviata: rispondi alla chiamata dal popup o dal <strong>Telefono</strong>.</li>
+          <li class="is-on"><strong>1.</strong> Premi <strong>start</strong> (basso a sinistra) → <strong>Inizia partita</strong>.</li>
           <li><strong>2.</strong> Parla del problema dell’NPC, poi chiedi la gift (non subito!).</li>
-          <li><strong>3.</strong> Riscatta su ScAmazzon, tieni basso il rischio, punta alla quota del giorno.</li>
+          <li><strong>3.</strong> Se uno non dà mai la gift e dice cose a caso → può essere un baiter: riaggancia entro 3 minuti o arriva la SWAT.</li>
+          <li><strong>4.</strong> Riscatta su ScAmazzon, tieni basso il rischio, punta alla quota del giorno.</li>
         </ol>
         <div class="tutorial__actions">
           <button type="button" id="tutorial-next" class="xp-btn xp-btn--default">Avanti</button>
@@ -407,10 +464,12 @@
         <p id="overlay-body"></p>
       </div>
       <div class="xp-dialog__actions">
-        <button type="button" id="overlay-restart" class="xp-btn xp-btn--default">Nuovo turno</button>
+        <button type="button" id="overlay-restart" class="xp-btn xp-btn--default">Giorno successivo</button>
       </div>
     </div>
   </div>
+
+  <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
 
   <script type="module" src="js/main.js"></script>
 </body>

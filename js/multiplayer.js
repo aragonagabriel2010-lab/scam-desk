@@ -1,6 +1,7 @@
 /**
  * Multiplayer co-op via PeerJS (cloud pubblico).
  * Host = autorità su cash/risk/eventi. Guest riceve sync.
+ * Ogni peer manda anche uno snapshot desk (spectate sola lettura).
  */
 
 const PREFIX = "scamdesk-";
@@ -12,7 +13,7 @@ function randomCode() {
   return s;
 }
 
-export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
+export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster, onDesk }) {
   let peer = null;
   let role = null; // "host" | "guest"
   let roomCode = null;
@@ -23,10 +24,22 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
     onStatus?.(msg);
   }
 
+  function myId() {
+    return peer?.id || null;
+  }
+
   function roster() {
-    const list = [{ id: "me", name: myName, role: role || "solo" }];
+    const list = [{ id: "me", peerId: myId(), name: myName, role: role || "solo", self: true }];
     for (const [id, c] of conns) {
-      if (c.open) list.push({ id, name: c._metaName || id.slice(0, 6), role: role === "host" ? "guest" : "host" });
+      if (c.open) {
+        list.push({
+          id,
+          peerId: id,
+          name: c._metaName || id.slice(0, 6),
+          role: role === "host" ? "guest" : "host",
+          self: false,
+        });
+      }
     }
     onRoster?.(list);
   }
@@ -37,6 +50,18 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
       if (id === exceptId || !c.open) continue;
       try {
         c.send(payload);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  function sendToAll(msg) {
+    if (role === "host") broadcast(msg);
+    else {
+      const first = [...conns.values()][0];
+      try {
+        first?.send(JSON.stringify(msg));
       } catch {
         /* ignore */
       }
@@ -55,7 +80,7 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
       if (c) c._metaName = msg.name || "Guest";
       roster();
       if (role === "host") {
-        c?.send(JSON.stringify({ type: "welcome", name: myName }));
+        c?.send(JSON.stringify({ type: "welcome", name: myName, peerId: myId() }));
       }
       return;
     }
@@ -66,6 +91,30 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
     }
     if (msg.type === "sync" && role === "guest") {
       onSync?.(msg.state);
+      return;
+    }
+    if (msg.type === "desk") {
+      const view = { ...msg, fromId: msg.fromId || fromId };
+      onDesk?.(view);
+      if (role === "host") broadcast(view, fromId);
+      return;
+    }
+    if (msg.type === "peer") {
+      // AnyDesk / remote: host inoltra al destinatario
+      const target = msg.toId;
+      const enriched = { ...msg, fromId: msg.fromId || fromId };
+      if (role === "host") {
+        if (target === myId()) onPeerEvent?.(enriched);
+        else if (target) {
+          try {
+            conns.get(target)?.send(JSON.stringify(enriched));
+          } catch {
+            /* ignore */
+          }
+        }
+      } else {
+        onPeerEvent?.(enriched);
+      }
       return;
     }
     if (msg.type === "event") {
@@ -124,6 +173,9 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
     get myName() {
       return myName;
     },
+    get peerId() {
+      return myId();
+    },
     setName(n) {
       myName = String(n || myName).slice(0, 18);
     },
@@ -131,7 +183,10 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
       return role === "host";
     },
     isConnected() {
-      return Boolean(role) && conns.size >= 0 && peer;
+      return Boolean(role) && peer;
+    },
+    peerCount() {
+      return [...conns.values()].filter((c) => c.open).length;
     },
     async host() {
       destroyPeer();
@@ -195,6 +250,44 @@ export function createMultiplayer({ onStatus, onSync, onPeerEvent, onRoster }) {
     },
     sendToast(text) {
       this.sendEvent({ kind: "toast", text });
+    },
+    /** Snapshot desk in sola lettura (non modifica lo stato host). */
+    pushDesk(view) {
+      if (!role || !peer) return;
+      sendToAll({
+        type: "desk",
+        from: myName,
+        fromId: myId(),
+        view,
+        at: Date.now(),
+      });
+    },
+    /** Messaggio diretto a un peer (via host se serve). */
+    sendToPeer(toId, payload) {
+      if (!role || !toId) return;
+      const msg = {
+        type: "peer",
+        toId,
+        from: myName,
+        fromId: myId(),
+        ...payload,
+        at: Date.now(),
+      };
+      if (role === "host") {
+        const c = conns.get(toId);
+        try {
+          c?.send(JSON.stringify(msg));
+        } catch {
+          /* ignore */
+        }
+      } else {
+        const first = [...conns.values()][0];
+        try {
+          first?.send(JSON.stringify(msg));
+        } catch {
+          /* ignore */
+        }
+      }
     },
   };
 }

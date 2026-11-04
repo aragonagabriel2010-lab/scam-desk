@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#7f1d1d"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)" stroke="#1e293b" stroke-width="6"/>
+  <ellipse cx="64" cy="48" rx="34" ry="28" fill="#fbbf24" stroke="#1e293b" stroke-width="3"/>
+  <path d="M30 42c8-22 60-22 68 0" fill="#f59e0b"/>
+  <circle cx="52" cy="52" r="3" fill="#222"/>
+  <circle cx="76" cy="52" r="3" fill="#222"/>
+  <path d="M48 68c8 10 24 10 32 0" stroke="#b45309" stroke-width="3" fill="none"/>
+  <ellipse cx="64" cy="62" rx="8" ry="5" fill="#fca5a5"/>
+  <path d="M28 100c12-22 60-22 72 0" fill="#1e3a8a"/>
+  <rect x="50" y="92" width="28" height="10" rx="2" fill="#ef4444"/>
+  <text x="64" y="118" text-anchor="middle" fill="#fef08a" font-family="Segoe UI" font-size="10" font-weight="800">HUGE</text>
+</svg>

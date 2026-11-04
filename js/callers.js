@@ -50,6 +50,7 @@ export const CALLERS = [
     avatar: "assets/avatars/dorothy.svg",
     voice: "elder_female",
     tag: "Anziana · confusa ma educata",
+    personality: "patient",
     vibe: "anziana confusa, educata, sospettosa a tratti",
     opener: "Pronto? Chi parla? Non capisco questi telefoni nuovi…",
     replies: {
@@ -78,6 +79,7 @@ export const CALLERS = [
     avatar: "assets/avatars/cheese.svg",
     voice: "young_male",
     tag: "Streamer · caotico e HYPED",
+    personality: "chaotic",
     vibe: "streamer Twitch esagerato, urla CHAT, goffo",
     opener: "YOOOO chat— ehm, pronto?! Cheese Dip in linea, bro!",
     replies: {
@@ -106,6 +108,7 @@ export const CALLERS = [
     avatar: "assets/avatars/earl.svg",
     voice: "deep_male",
     tag: "Cowboy · sospettoso",
+    personality: "skeptic",
     vibe: "texano sospettoso, lento a fidarsi",
     opener: "…Sì? Chi diavolo chiama a quest’ora?",
     replies: {
@@ -134,6 +137,7 @@ export const CALLERS = [
     avatar: "assets/avatars/shanice.svg",
     voice: "young_female",
     tag: "Young · scettica e diretta",
+    personality: "skeptic",
     vibe: "giovane, scettica, veloce a perdere pazienza",
     opener: "Pronto? Se sei telemarketing chiudo subito.",
     replies: {
@@ -162,6 +166,7 @@ export const CALLERS = [
     avatar: "assets/avatars/giovanni.svg",
     voice: "deep_male",
     tag: "Manager · di fretta",
+    personality: "rush",
     vibe: "manager stressato, parla a raffica, vuole soluzioni immediate",
     opener: "Pronto, Conti. Ho tre minuti. È urgente o chiudo.",
     replies: {
@@ -190,6 +195,7 @@ export const CALLERS = [
     avatar: "assets/avatars/mila.svg",
     voice: "young_female",
     tag: "Studentessa · ansiosa",
+    personality: "anxious",
     vibe: "studentessa universitaria ansiosa, parla in fretta, teme di essere presa in giro",
     opener: "Pronto? Scusa se disturbo… mi hanno detto di chiamare questo numero…",
     replies: {
@@ -212,21 +218,196 @@ export const CALLERS = [
     code: "MILA-UNI-7788",
     codeValue: 70,
   },
+  {
+    id: "nebula",
+    name: "Capitano Nebulosa",
+    avatar: "assets/avatars/cap-nebula.svg",
+    voice: "deep_male",
+    tag: "Astronauta · in ritardo di 12 anni",
+    personality: "literal",
+    vibe: "ex astronauta confuso, parla come fosse ancora in orbita, prende tutto troppo sul serio",
+    opener: "Controllo Missione? Qui Nebulosa. Lo schermo… sta facendo re-entry.",
+    replies: {
+      greet: "Ricevuto. Qui Capitano Nebulosa, rientrato sulla Terra… credo. Chi parla dalla stazione?",
+      affirm: "Copia. Se Houston lo conferma, io eseguo. Anche se Houston era un call center.",
+      need: "Il mio problema è gravità uno: pop-up ovunque. Sembrano allarmi di scudo termico.",
+      prize: "Un premio? Negli anni Novanta ci diedero una penna della NASA. Sospetto.",
+      code: "Sul braccio della tuta c’è stampato {{CODE}} da {{AMOUNT}}$. È un codice di lancio?",
+      tech: "Windows Update dice T-minus. Io ho messo il casco. Aiuto.",
+      bank: "Il conto… è in dollari o in ossigeno? Non confondetemi le valvole.",
+      tax: "Tasse? Nello spazio non c’erano. Qui sì. Crudele.",
+      trust: "Se siete Mission Control veri, dite la parola d’ordine: «tang».",
+      who: "Identificatevi. Indicativo di chiamata. Subito.",
+      fallback: [
+        "Ripetete, c’è ritardo di segnale… o sono io.",
+        "Copia parziale. Continuate la trasmissione.",
+        "Ok. Mantengo l’assetto. Parlate.",
+      ],
+    },
+    code: "NEBULA-ORBIT-7",
+    codeValue: 130,
+  },
+  {
+    id: "crumpetti",
+    name: "Don Crumpetti",
+    avatar: "assets/avatars/don-crumpetti.svg",
+    voice: "deep_male",
+    tag: "Politico · volume al massimo",
+    personality: "ego",
+    vibe: "politico satira pomposo, parla a slogan, tutto è ‘il più grande di sempre’",
+    opener: "Pronto? Molto famoso. Molti problemi al telefono. I migliori problemi.",
+    replies: {
+      greet: "Grande saluto. Io sono Don Crumpetti. Tutti lo sanno. Voi chi siete, eh?",
+      affirm: "Esatto. Tutti dicono che ho ragione. Anche mia cugina. Forse.",
+      need: "Il mio account è stato… ATTACCATO. Dai rivali. Serve una vittoria ENORME.",
+      prize: "Un premio? Io vinco sempre. Ma se c’è una gift, ok, è HUGE.",
+      code: "Ho il codice più bello: {{CODE}} da {{AMOUNT}}$. Nessuno ha codici così.",
+      tech: "Il computer fa cose fake news. Schermo blu? Fake. Tranne quando è vero.",
+      bank: "I miei soldi sono i migliori soldi. Non toccateli. O sì, se serve a vincere.",
+      tax: "Tasse? Preferisco i rimborsi. Grossi. I più grossi.",
+      trust: "Fidarsi di me è vincente. Fidarsi di voi… vedremo.",
+      who: "Dite il nome. In stampatello. Come un comizio.",
+      fallback: [
+        "Molti dicono di ripetere. Ok. Ripetete.",
+        "Ascolto. Sono un grande ascoltatore. Il migliore.",
+        "Va bene. Continuate. Senza perdere tempo. Tempo = potere.",
+      ],
+    },
+    code: "CRUMP-HUGE-2026",
+    codeValue: 200,
+  },
+  {
+    id: "padre-router",
+    name: "Padre Router",
+    avatar: "assets/avatars/padre-router.svg",
+    voice: "elder_male",
+    tag: "Prete · benedice il Wi‑Fi",
+    personality: "patient",
+    vibe: "prete gentile e fuori di testa che tratta router e peccati allo stesso modo",
+    opener: "Figlio mio… il LED arancione del modem non si spegne. È un segno?",
+    replies: {
+      greet: "Pace e Wi‑Fi. Sono Padre Router. Il segnale è debole, come la fede di mercoledì.",
+      affirm: "Amen. Se lo dite voi… io ci credo. Quasi.",
+      need: "Ho bisogno di confessare: ho cliccato su ‘Hai vinto un iPad’. Due volte.",
+      prize: "Un premio terreno? Preferisco le indulgenze. Ma un buono Amazon… mh.",
+      code: "Nel messale digitale c’è scritto {{CODE}} da {{AMOUNT}}$. È sacro?",
+      tech: "Il diavolo è nei cookie. E nei popup. Esorcizziamo insieme?",
+      bank: "L’offerta della domenica è finita su un sito strano. Aiuto pastorale, prego.",
+      tax: "A Cesare quel che è di Cesare… ma Cesare vuole una gift card?",
+      trust: "Giurate sulla fibra ottica che non siete tentatori.",
+      who: "Siete dell’arcidiocesi IT o dell’inferno call center?",
+      fallback: [
+        "Ripetete, figlio. Le orecchie sono analogiche.",
+        "Vi ascolto in silenzio contemplativo. Parlate.",
+        "Va bene. Procediamo con la liturgia del reset.",
+      ],
+    },
+    code: "AMEN-WIFI-404",
+    codeValue: 95,
+  },
+  {
+    id: "zed",
+    name: "Zed “Moonboy” Quasar",
+    avatar: "assets/avatars/zed-moonboy.svg",
+    voice: "young_male",
+    tag: "Crypto · sempre long",
+    personality: "hype",
+    vibe: "crypto bro euforico, jargon da Discord, pensa che tutto sia un segnale di pump",
+    opener: "YOO GM— ehm pronto? Zed in linea. Il mio wallet sta… vibando. Bullish o rug?",
+    replies: {
+      greet: "GM ser. Siete support del CEX o un’altra airdrop call? Spill.",
+      affirm: "WAGMI se è vero. Se è scam… comunque WAGMI? No. Aspetta.",
+      need: "Serve unlock del seed phrase… scherzo. Serve capire questi pop-up rossi.",
+      prize: "Airdrop?! Dammi i passi prima che la chat mi chiami ser.",
+      code: "Ho un codice alpha: {{CODE}} da {{AMOUNT}}$. Non è financial advice.",
+      tech: "Il PC minea polvere. LED a 100. È un virus o un node?",
+      bank: "Fiat bridge giù. Non toccatemi le stable. Please.",
+      tax: "Tax loss harvesting? Bro io non so neanche cos’è un 730.",
+      trust: "Se siete legit droppate un contract address… o una scusa migliore.",
+      who: "Nome. Chain. Prove. O vi corto.",
+      fallback: [
+        "Ripeti in bullet points, sto chartando.",
+        "Ok ser, continuo ad ascoltare. Non rug me.",
+        "Lfg— ehm, proseguite.",
+      ],
+    },
+    code: "ZED-WAGMI-888",
+    codeValue: 160,
+  },
 ];
 
-export function pickCaller(excludeId) {
-  const pool = CALLERS.filter((c) => c.id !== excludeId);
-  return pool[Math.floor(Math.random() * pool.length)];
+/**
+ * @param {string|string[]|null} excludeIds evita ripetere gli stessi chiamanti di fila
+ */
+export function pickCaller(excludeIds = null) {
+  const blocked = new Set(
+    Array.isArray(excludeIds) ? excludeIds.filter(Boolean) : excludeIds ? [excludeIds] : []
+  );
+  let pool = CALLERS.filter((c) => !blocked.has(c.id));
+  if (!pool.length) pool = CALLERS.slice();
+  return pool[randIndex(pool.length)];
 }
 
-/** Codice gift random (es. K7MP-3QWX-9H2A). */
+/** Risposte nonsense quando un baiter viene spinto sulla gift (mai un codice vero). */
+const BAITER_CODE_LINES = [
+  "Gift card? Io ho solo la tessera della spesa… è la stessa cosa, no?",
+  "Un codice? Aspetti che conto fino a venti… uno, due… ehm, mi sono perso.",
+  "Mi hanno detto di non dare mai i numeri agli sconosciuti. Quindi no. Bravo io?",
+  "Certo! Il codice è… blu. No, aspetta, era giallo? Sul frigo c’è la lista della spesa.",
+  "Gift? Preferisco i francobolli. Ne ho tre. Li vuole?",
+  "Ah i codici… mio nipote dice sempre ‘password123’. Va bene quello?",
+  "Scusi, stavo guardando un uccellino fuori dalla finestra. Di che parlavamo?",
+  "Soldi? Io pago tutto in monete da 2 euro. Le mando per posta?",
+  "Ok ok, le do il codice: A… B… C… e poi mi sono dimenticato il resto. Urrà?",
+  "La Microsoft mi ha già chiamato ieri. O era il fornaio? Comunque niente gift oggi.",
+];
+
+const BAITER_FILLER = [
+  "Mh? Può ripetere? Stavo annusando il telefono, odora di plastica.",
+  "Sì sì… anzi no. Anzi forse. Continui pure.",
+  "Interessante. Io intanto metto l’acqua a bollire. Ciao acqua.",
+  "Ha ragione lei. Sempre. Anche quando ha torto. Soprattutto allora.",
+];
+
+/**
+ * A volte il “tonto” è un baiter: stesso volto, mai gift vere.
+ * Se resti in linea troppo a lungo → SWAT (gestito in main).
+ */
+export function maybeDisguiseBaiter(caller, day = 1) {
+  const chance = Math.min(0.28, 0.1 + Math.max(0, Number(day) || 1) * 0.02);
+  if (!caller || Math.random() > chance) return caller;
+  return {
+    ...caller,
+    id: `${caller.id}-bait`,
+    isBaiter: true,
+    // tag innocente: non svelare
+    tag: caller.tag,
+    vibe: `${caller.vibe}, un filo distratto e confuse`,
+    replies: {
+      ...caller.replies,
+      code: BAITER_CODE_LINES[0],
+      prize: "Un premio? Io vinco sempre a tombola… in sogno. Niente codici però.",
+      fallback: [...BAITER_FILLER, ...(caller.replies?.fallback || [])],
+    },
+  };
+}
+
+export function baiterEvasionLine() {
+  return BAITER_CODE_LINES[randIndex(BAITER_CODE_LINES.length)];
+}
+
+/** Codice gift random (es. K7MP-3QWX-9H2A). Sempre diverso a ogni richiesta. */
 export function makeRandomGiftCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const chunk = () => {
-    let s = "";
-    for (let i = 0; i < 4; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
-    return s;
+  const pick = () => {
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const buf = new Uint8Array(1);
+      crypto.getRandomValues(buf);
+      return alphabet[buf[0] % alphabet.length];
+    }
+    return alphabet[Math.floor(Math.random() * alphabet.length)];
   };
+  const chunk = () => Array.from({ length: 4 }, pick).join("");
   return `${chunk()}-${chunk()}-${chunk()}`;
 }
 
@@ -328,29 +509,107 @@ const PROBLEM_BANK = [
     explain: "Dovevo rinnovare un abbonamento e ora non so più a chi ho dato i dati.",
     opener: "Buongiorno… mi sono persa tra le password. Qualcuno di serio?",
   },
+  {
+    category: "tech",
+    summary: "Router benedetto",
+    explain: "Il modem lampeggia arancione da tre giorni e la messa online è finita in buffering.",
+    opener: "Figlio… il Wi‑Fi ha smesso di fare miracoli. Mi aiutate?",
+  },
+  {
+    category: "bank",
+    summary: "Bonifico “nipote”",
+    explain: "Mi hanno scritto da un numero strano che il nipote è in emergenza e serve un bonifico subito.",
+    opener: "Pronto? Dicono che mio nipote è nei guai… è vero o è una truffa?",
+  },
+  {
+    category: "tech",
+    summary: "Aggiornamento eterno",
+    explain: "Windows Update è fermo al 99% da ieri e non riesco più a lavorare.",
+    opener: "Scusi, il computer aggiorna da ieri. È normale o mi hanno fregato?",
+  },
+  {
+    category: "prize",
+    summary: "Concorso social",
+    explain: "Ho “vinto” un giveaway su Instagram ma per ritirarlo chiedono una gift card.",
+    opener: "Ehi, ho vinto un giveaway… o mi stanno prendendo in giro?",
+  },
+  {
+    category: "bank",
+    summary: "IBAN sbagliato",
+    explain: "Ho mandando soldi a un IBAN che mi hanno passato al telefono e ora non risponde nessuno.",
+    opener: "Pronto? Ho fatto un bonifico e… credo di aver combinato un casino.",
+  },
+  {
+    category: "tech",
+    summary: "Extensione sospetta",
+    explain: "Chrome mi ha installato da solo una barra di ricerca e ogni sito puzza di pubblicità.",
+    opener: "Il browser fa cose da solo. Voi siete antivirus o call center?",
+  },
+  {
+    category: "tax",
+    summary: "Cartella “urgente”",
+    explain: "Mi è arrivata una mail con una cartella esattoriale da pagare entro stasera in gift card.",
+    opener: "Salve… c’è una cartella urgente. Siete dell’Agenzia o no?",
+  },
+  {
+    category: "need",
+    summary: "Account streaming",
+    explain: "Netflix/Disney mi ha buttato fuori e la password non funziona più da dopo un link “verifica”.",
+    opener: "Pronto? Non entro più nello streaming. Mi sbloccate l’account?",
+  },
+  {
+    category: "tech",
+    summary: "Microfono muto di sistema",
+    explain: "In ogni call il microfono risulta in uso da un’app sconosciuta chiamata UpdateHelper.",
+    opener: "Il microfono è occupato da un fantasma. Sapete cos’è UpdateHelper?",
+  },
 ];
+
+function randIndex(n) {
+  if (n <= 0) return 0;
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % n;
+  }
+  return Math.floor(Math.random() * n);
+}
+
+function flavorOpener(caller, opener) {
+  let out = opener;
+  if (caller?.id === "cheese" && !/bro|chat|yoo/i.test(out)) {
+    out = `BRO— ${out} Chat is this real?`;
+  } else if (caller?.id === "earl" && !/^\.\.\./.test(out)) {
+    out = `…${out}`;
+  } else if (caller?.id === "dorothy" && !/scusi|pronto|salve|buongiorno/i.test(out)) {
+    out = `Pronto? ${out}`;
+  } else if (caller?.id === "padre-router" && !/figlio|pace|wi‑?fi|amen/i.test(out)) {
+    out = `Pace e segnale. ${out}`;
+  } else if (caller?.id === "nebula" && !/controllo|missione|nebulosa|copia/i.test(out)) {
+    out = `Controllo Missione? ${out}`;
+  } else if (caller?.id === "crumpetti" && !/huge|grande|famoso/i.test(out)) {
+    out = `Molto urgente. ${out}`;
+  } else if (caller?.id === "zed" && !/\bgm\b|wagmi|ser|yoo/i.test(out)) {
+    out = `GM— ${out}`;
+  }
+  return out;
+}
 
 /**
  * Problema random offline, stilizzato sul personaggio.
- * @returns {{ category: string, summary: string, explain: string, opener: string, source: string }}
+ * @param {string[]} [excludeSummaries] evita di ripeti gli ultimi problemi
  */
-export function pickRandomProblem(caller) {
-  const item = PROBLEM_BANK[Math.floor(Math.random() * PROBLEM_BANK.length)];
+export function pickRandomProblem(caller, excludeSummaries = []) {
+  const blocked = new Set(excludeSummaries || []);
+  let pool = PROBLEM_BANK.filter((p) => !blocked.has(p.summary));
+  if (!pool.length) pool = PROBLEM_BANK.slice();
+  const item = pool[randIndex(pool.length)];
   const name = caller?.name?.split(" ")[0] || "Io";
-  let opener = item.opener;
-  // piccola variazione per personaggio
-  if (caller?.id === "cheese" && !/bro|chat|yoo/i.test(opener)) {
-    opener = `BRO— ${opener} Chat is this real?`;
-  } else if (caller?.id === "earl" && !/^\.\.\./.test(opener)) {
-    opener = `…${opener}`;
-  } else if (caller?.id === "dorothy" && !/scusi|pronto|salve|buongiorno/i.test(opener)) {
-    opener = `Pronto? ${opener}`;
-  }
   return {
     category: item.category,
     summary: item.summary,
     explain: item.explain,
-    opener,
+    opener: flavorOpener(caller, item.opener),
     source: "bank",
     label: `${name}: ${item.summary}`,
   };
@@ -386,7 +645,84 @@ export function detectIntent(text) {
   return best;
 }
 
-export function scriptReply(caller, playerText, amount, problem = null, giftCode = null) {
+function normLine(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Il giocatore chiede di (ri)spiegare il problema. */
+function playerAsksToRetell(playerText) {
+  return /\b(problema|mi (lo )?dica|raccont|cos[’']?\s*è|cos e|urgente|cartella|spieg|ripet|ancora una volta|non (ho )?capito)\b/i.test(
+    playerText || ""
+  );
+}
+
+function rephraseProblem(problem) {
+  const summary = problem?.summary || "sto casino";
+  const explain = problem?.explain || summary;
+  const variants = [
+    `Ripeto, scusi: ${explain}`,
+    `Il punto è questo — «${summary}»: ${explain}`,
+    `Allora, di nuovo: ${explain} Ecco, è tutto qui.`,
+    `Sì, le rispiego: ${explain}`,
+  ];
+  return variants[randIndex(variants.length)];
+}
+
+function pickProblemFollowUp(caller, intent, playerText, problem, excludeTexts = []) {
+  const summary = problem?.summary || "sto casino";
+  const blocked = new Set((excludeTexts || []).map(normLine).filter(Boolean));
+
+  // Se chiedono di rispiegare il problema → lo raccontano di nuovo (non “lo so già”)
+  if (playerAsksToRetell(playerText) && problem?.explain) {
+    const retells = [
+      rephraseProblem(problem),
+      `Va bene, glielo dico ancora: ${problem.explain}`,
+      `Scusi, riparto da capo. «${summary}»: ${problem.explain}`,
+    ].filter((t) => !blocked.has(normLine(t)));
+    if (retells.length) return retells[randIndex(retells.length)];
+  }
+
+  const offerHelp = /aiut|sistem|risolv|mand|ripar|fixens|antivirus|regal|gift|codice/i.test(
+    playerText || ""
+  );
+  const base = offerHelp
+    ? [
+        `Ah, quindi potete davvero sistemare «${summary}»? Ok… ditemi il prossimo passo, senza giri.`,
+        `Se mi liberate da «${summary}» vi ascolto. Cosa devo fare io adesso?`,
+        `Va bene, mi fido… un po’. Partiamo: primo passo per «${summary}»?`,
+        `Perfetto, allora agite. Io resto al telefono. «${summary}» mi sta facendo impazzire.`,
+        `Ok, mi convince. Da dove cominciamo con «${summary}»?`,
+      ]
+    : [
+        `Sì, è ancora «${summary}». Dimmi cosa fare ora, per favore.`,
+        `Vi ascolto. Una cosa chiara: come si sistema «${summary}»?`,
+        `D’accordo… allora il passo successivo? Io resto in linea.`,
+        `Ho già detto del problema. Ora mi serve una soluzione concreta.`,
+        `Ok, andiamo avanti: cosa clicco / cosa dico per «${summary}»?`,
+      ];
+  const fb = caller?.replies?.fallback;
+  if (Array.isArray(fb)) base.push(...fb);
+  if (intent === "tech") {
+    base.push(`Sul tecnico: «${summary}» continua. Avete un fix o solo chiacchiere?`);
+  }
+  if (intent === "code" || intent === "prize") {
+    base.push(`Prima sistemiamo «${summary}», poi se serve il codice ne parliamo.`);
+  }
+
+  const pool = base.filter((t) => !blocked.has(normLine(t)));
+  const use = pool.length ? pool : base;
+  return use[randIndex(use.length)];
+}
+
+/**
+ * @param {object} opts
+ * @param {boolean} [opts.alreadyToldProblem] se true non ripete problem.explain
+ * @param {string[]} [opts.excludeTexts] battute da non riusare
+ */
+export function scriptReply(caller, playerText, amount, problem = null, giftCode = null, opts = {}) {
   const intent = detectIntent(playerText);
   const table = caller.replies || {};
   const amt = Math.max(25, Math.min(500, Number(amount) || caller.codeValue || 100));
@@ -395,33 +731,73 @@ export function scriptReply(caller, playerText, amount, problem = null, giftCode
     String(s)
       .replaceAll("{{CODE}}", code)
       .replaceAll("{{AMOUNT}}", String(amt));
+  const alreadyTold = Boolean(opts.alreadyToldProblem);
+  const excludeTexts = opts.excludeTexts || [];
+  const problemIntent =
+    intent === "need" ||
+    intent === "tech" ||
+    intent === "bank" ||
+    intent === "tax" ||
+    intent === "prize" ||
+    (intent === "affirm" && /problema|aiut|capisc|raccont/i.test(playerText)) ||
+    playerAsksToRetell(playerText);
 
-  // Se c’è un problema di questa chiamata, usalo per need/tech/banca/tasse/premio
-  if (
-    problem?.explain &&
-    (intent === "need" ||
-      intent === "tech" ||
-      intent === "bank" ||
-      intent === "tax" ||
-      intent === "prize" ||
-      (intent === "affirm" && /problema|aiut|capisc|raccont/i.test(playerText)))
-  ) {
+  // Prima volta: spiega il problema. Poi solo follow-up (niente copia-incolla).
+  if (problem?.explain && problemIntent && !alreadyTold) {
     return {
       text: fill(problem.explain),
       intent,
       trustDelta: trustForIntent(intent === "affirm" ? "need" : intent),
       amount: amt,
       code,
+      usedProblem: true,
+    };
+  }
+  if (problem?.explain && problemIntent && alreadyTold) {
+    // Baiter: se spingi sulla gift, evita e dice cose a caso
+    if (caller?.isBaiter && (intent === "code" || intent === "prize" || /gift|codice|carta regalo|buono/i.test(playerText || ""))) {
+      return {
+        text: baiterEvasionLine(),
+        intent,
+        trustDelta: 1,
+        amount: amt,
+        code: null,
+        usedProblem: false,
+        baiterEvade: true,
+      };
+    }
+    return {
+      text: fill(pickProblemFollowUp(caller, intent, playerText, problem, excludeTexts)),
+      intent,
+      trustDelta: trustForIntent(intent === "affirm" ? "need" : intent) + 2,
+      amount: amt,
+      code,
+      usedProblem: false,
+    };
+  }
+
+  if (caller?.isBaiter && (intent === "code" || intent === "prize" || /gift|codice|carta regalo|buono/i.test(playerText || ""))) {
+    return {
+      text: baiterEvasionLine(),
+      intent: "code",
+      trustDelta: 1,
+      amount: amt,
+      code: null,
+      baiterEvade: true,
     };
   }
 
   if (intent !== "fallback" && table[intent]) {
+    let line = table[intent];
+    if (caller?.isBaiter && (intent === "code" || intent === "prize")) {
+      line = baiterEvasionLine();
+    }
     return {
-      text: fill(table[intent]),
+      text: fill(line),
       intent,
       trustDelta: trustForIntent(intent),
       amount: amt,
-      code,
+      code: caller?.isBaiter ? null : code,
     };
   }
   const fb = table.fallback;
@@ -446,4 +822,66 @@ function trustForIntent(intent) {
     fallback: 2,
   };
   return map[intent] ?? 2;
+}
+
+/**
+ * Modifica fiducia in base alla personalità del chiamante + testo del giocatore.
+ * patient → frasi lunghe/gentili; rush → messaggi corti; ego → lodi; hype → crypto slang; ecc.
+ */
+export function personalityTrustMod(caller, playerText, intent) {
+  const p = caller?.personality || "patient";
+  const t = String(playerText || "");
+  const len = t.trim().length;
+  const short = len > 0 && len < 40;
+  const long = len > 120;
+  const polite = /per favore|prego|scus|gentil|signor|signora|aiuto|tranquill/i.test(t);
+  const rude = /scemo|idiota|sbrigati|dai su|shut|fregat/i.test(t);
+  const hypeWords = /wagmi|gm\b|ser\b|pump|moon|alpha|ngmi|lfg/i.test(t);
+  const egoWords = /miglior|grande|vincente|huge|numero uno|presidente|importante/i.test(t);
+  const techWords = /virus|hacker|tecnico|reset|firewall|router|aggiorn/i.test(t);
+  const giftEarly = intent === "code" || intent === "prize";
+
+  let mod = 0;
+  if (rude) mod -= 8;
+
+  switch (p) {
+    case "patient":
+      if (polite || long) mod += 6;
+      if (short && giftEarly) mod -= 5;
+      if (/piano|calma|le spiego|non si preoccupi/i.test(t)) mod += 4;
+      break;
+    case "rush":
+      if (short) mod += 5;
+      if (long) mod -= 6;
+      if (/subito|adesso|veloce|rapido|due minuti/i.test(t)) mod += 4;
+      break;
+    case "skeptic":
+      if (/giuro|ufficiale|verifica|documento|protocollo|non è una truffa/i.test(t)) mod += 5;
+      if (giftEarly && len < 80) mod -= 6;
+      if (polite) mod += 2;
+      break;
+    case "anxious":
+      if (polite || /tranquill|niente paura|ti aiuto|ok ok/i.test(t)) mod += 6;
+      if (rude || /sbrigati/i.test(t)) mod -= 10;
+      break;
+    case "chaotic":
+      if (/chat|bro|clip|live|gg|based/i.test(t)) mod += 5;
+      if (long && !/bro|chat/i.test(t)) mod -= 3;
+      break;
+    case "ego":
+      if (egoWords) mod += 8;
+      if (/piccolo|ordinario|nessuno/i.test(t)) mod -= 6;
+      break;
+    case "hype":
+      if (hypeWords || /wallet|crypto|coin|bridge/i.test(t)) mod += 7;
+      if (/tasse|fisco|bonifico classico/i.test(t)) mod -= 3;
+      break;
+    case "literal":
+      if (techWords || /copia|ricevuto|assetto|missione|passo/i.test(t)) mod += 5;
+      if (/scherzo|lol|aha/i.test(t)) mod -= 4;
+      break;
+    default:
+      if (polite) mod += 2;
+  }
+  return mod;
 }

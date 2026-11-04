@@ -4,6 +4,9 @@ import {
   detectIntent,
   pickRandomProblem,
   makeRandomGiftCode,
+  personalityTrustMod,
+  maybeDisguiseBaiter,
+  baiterEvasionLine,
 } from "./callers.js";
 import {
   loadAiConfig,
@@ -14,6 +17,13 @@ import {
   describeAiConfig,
 } from "./ai.js";
 import { APPS, CARDS, HUSTLES, rollPayout, dayQuota } from "./shop.js";
+import {
+  rollDayObjectives,
+  evaluateObjectives,
+  sumObjectiveRewards,
+  storyBeatForDay,
+  bossForDay,
+} from "./campaign.js";
 import { createMultiplayer } from "./multiplayer.js";
 import {
   createMic,
@@ -21,6 +31,7 @@ import {
   stopSpeaking,
   setTtsEnabled,
   isTtsEnabled,
+  isNpcSpeaking,
   setTtsRateMul,
   getTtsRateMul,
   setTalkingListener,
@@ -41,19 +52,21 @@ const START_HOUR = 9;
 const SAVE_KEY = "scamdesk-save-v1";
 const HISCORE_KEY = "scamdesk-hiscore";
 const TUTORIAL_KEY = "scamdesk-tutorial-v1";
+const ICON_POS_KEY = "scamdesk-icon-pos-v1";
 const WIN_TITLES = {
   phone: "Telefono",
   scamazzon: "ScAmazzon",
   wallet: "Portafoglio",
-  stats: "Stato turno",
+  stats: "Stato giornata",
   settings: "Impostazioni AI",
   net: "Rete co-op",
   recycle: "Cestino",
+  spectate: "Spectate",
+  tool: "App installata",
 };
 
 const state = {
   day: 1,
-  dayEarned: 0,
   cash: 0,
   risk: 0,
   minute: 0,
@@ -74,9 +87,93 @@ const state = {
   ttsRetry: null,
   hustleCd: {},
   net: null,
+  /** guadagno della giornata corrente (per quota) — la cassa totale resta */
+  dayEarned: 0,
+  /** fine giornata: next day vs retry stesso giorno */
+  endKind: null,
+  /** true solo dopo Start → Inizia partita (chiamate attive) */
   playing: false,
-  retryPending: false,
+  /** ultimi chiamanti / problemi — evita ripetizioni di fila */
+  recentCallerIds: [],
+  recentProblems: [],
+  /** peerId → ultimo snapshot desk (spectate) */
+  peerDesks: {},
+  spectateId: null,
+  deskPushTimer: null,
+  /** obiettivi bonus (premio solo a fine giornata ok) */
+  dayObjectives: [],
+  dayStats: {
+    codesWon: 0,
+    maxCombo: 0,
+    hustlesDone: 0,
+    callsDone: 0,
+    appsBought: 0,
+  },
+  callStartedAt: null,
+  callTimerIv: null,
+  /** timer baiter: 3 min in linea → SWAT */
+  baiterTimer: null,
+  bossPending: false,
+  /** AnyDesk: io controllo un peer / un peer controlla me */
+  controllingId: null,
+  controlledBy: null,
+  lastSpecChatLen: 0,
 };
+
+function quota() {
+  return dayQuota(state.day);
+}
+
+function loadSave() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+    if (!raw || typeof raw !== "object") return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function persistSave() {
+  const data = {
+    day: state.day,
+    cash: state.cash,
+    apps: [...state.apps],
+    hiscore: state.hiscore,
+    callHistory: state.callHistory.slice(0, 20),
+  };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  if (state.cash > state.hiscore) {
+    state.hiscore = state.cash;
+    localStorage.setItem(HISCORE_KEY, String(state.hiscore));
+  }
+}
+
+function applySave(data) {
+  if (!data) return;
+  state.day = Math.max(1, Number(data.day) || 1);
+  state.cash = Math.max(0, Number(data.cash) || 0);
+  state.apps = new Set(Array.isArray(data.apps) ? data.apps : []);
+  if (Number(data.hiscore) > state.hiscore) state.hiscore = Number(data.hiscore);
+  if (Array.isArray(data.callHistory)) state.callHistory = data.callHistory;
+}
+
+function wipeCampaign() {
+  localStorage.removeItem(SAVE_KEY);
+  state.day = 1;
+  state.cash = 0;
+  state.apps = new Set();
+  state.callHistory = [];
+  state.combo = 0;
+  state.hustleCd = {};
+  persistSave();
+}
+
+function appUnlocked(app) {
+  const dayOk = state.day >= (app.unlockDay || 1);
+  const cashOk = state.cash >= (app.unlockAt || 0) || state.apps.has(app.id);
+  return dayOk && cashOk;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -87,10 +184,121 @@ function money(n) {
 
 function toast(msg) {
   const el = $("#toast");
-  el.textContent = msg;
+  if (el) {
+    el.textContent = msg;
+    el.classList.remove("hidden");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.add("hidden"), 2800);
+  }
+  const stack = $("#toast-stack");
+  if (!stack) return;
+  const pop = document.createElement("div");
+  pop.className = "toast-pop";
+  pop.textContent = msg;
+  stack.appendChild(pop);
+  setTimeout(() => pop.remove(), 3200);
+}
+
+function updateDesktopRisk() {
+  const desk = $("#desktop");
+  if (!desk) return;
+  let lvl = "low";
+  if (state.risk >= 85) lvl = "crit";
+  else if (state.risk >= 60) lvl = "high";
+  else if (state.risk >= 35) lvl = "mid";
+  desk.dataset.risk = lvl;
+}
+
+function renderObjectives() {
+  const ul = $("#day-objectives");
+  if (!ul) return;
+  const stats = {
+    ...state.dayStats,
+    endRisk: state.risk,
+    maxCombo: Math.max(state.dayStats.maxCombo || 0, state.combo || 0),
+  };
+  const list = evaluateObjectives(state.dayObjectives, stats);
+  ul.innerHTML = "";
+  if (!list.length) {
+    ul.innerHTML = `<li class="muted">Nessun bonus oggi</li>`;
+    return;
+  }
+  for (const o of list) {
+    const li = document.createElement("li");
+    li.className = o.done ? "is-done" : "";
+    li.textContent = `${o.label} · +${money(o.reward)} a fine giornata`;
+    ul.appendChild(li);
+  }
+}
+
+function renderStoryBanner() {
+  const el = $("#story-banner");
+  if (!el) return;
+  const beat = storyBeatForDay(state.day);
+  if (!beat) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    return;
+  }
   el.classList.remove("hidden");
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.add("hidden"), 2800);
+  el.textContent = `${beat.title}: ${beat.blurb}`;
+}
+
+function personaHint(caller) {
+  const map = {
+    patient: "Vuole pazienza e toni calmi.",
+    rush: "Di fretta: frasi corte e concrete.",
+    skeptic: "Diffidente: prove e protocollo.",
+    anxious: "Ansiosa: rassicura, non urlarle.",
+    chaotic: "Streamer: parla “chat/bro”.",
+    ego: "Ego enorme: loda e gonfia.",
+    hype: "Crypto: slang WAGMI/GM.",
+    literal: "Preso sul serio: termini tecnici/missione.",
+  };
+  return map[caller?.personality] || "";
+}
+
+function startCallTimer() {
+  stopCallTimer();
+  state.callStartedAt = Date.now();
+  const tick = () => {
+    const el = $("#call-timer");
+    if (!el || !state.callStartedAt) return;
+    const s = Math.floor((Date.now() - state.callStartedAt) / 1000);
+    el.textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  };
+  tick();
+  state.callTimerIv = setInterval(tick, 1000);
+}
+
+function stopCallTimer() {
+  clearInterval(state.callTimerIv);
+  state.callTimerIv = null;
+  state.callStartedAt = null;
+  if ($("#call-timer")) $("#call-timer").textContent = "00:00";
+}
+
+const BAITER_LIMIT_MS = 3 * 60 * 1000;
+
+function clearBaiterTimer() {
+  clearTimeout(state.baiterTimer);
+  state.baiterTimer = null;
+}
+
+function armBaiterTimer(caller) {
+  clearBaiterTimer();
+  if (!caller?.isBaiter) return;
+  // 3 minuti: il baiter ha già chiamato la SWAT
+  state.baiterTimer = setTimeout(() => {
+    if (!state.call?.caller?.isBaiter || state.over) return;
+    hangUp(true);
+    endGame("baiter");
+  }, BAITER_LIMIT_MS);
+  // Hint molto lieve a 2:00 (non svela)
+  setTimeout(() => {
+    if (!state.call?.caller?.isBaiter || state.over) return;
+    toast("Linea strana… questa persona gira a vuoto.");
+  }, 120000);
 }
 
 function loadHiscore() {
@@ -105,47 +313,6 @@ function saveHiscore(cash) {
     return true;
   }
   return false;
-}
-
-function loadSave() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
-    return raw && typeof raw === "object" ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistSave() {
-  const data = {
-    day: state.day,
-    dayEarned: state.dayEarned,
-    cash: state.cash,
-    apps: [...state.apps],
-    retryPending: state.retryPending,
-    callHistory: state.callHistory.slice(0, 20),
-  };
-  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-  saveHiscore(state.cash);
-}
-
-function applySave(data) {
-  if (!data) return;
-  const day = Math.floor(Number(data.day));
-  const dayEarned = Number(data.dayEarned);
-  const cash = Number(data.cash);
-  state.day = Number.isFinite(day) ? Math.max(1, day) : 1;
-  state.dayEarned = Number.isFinite(dayEarned) ? Math.max(0, dayEarned) : 0;
-  state.cash = Number.isFinite(cash) ? Math.max(0, cash) : 0;
-  state.apps = new Set(
-    Array.isArray(data.apps) ? data.apps.filter((id) => APPS.some((app) => app.id === id)) : []
-  );
-  state.retryPending = Boolean(data.retryPending);
-  state.callHistory = Array.isArray(data.callHistory) ? data.callHistory.slice(0, 20) : [];
-}
-
-function quota() {
-  return dayQuota(state.day);
 }
 
 function updateTrustHint() {
@@ -184,9 +351,9 @@ function clockLabel() {
 }
 
 function renderHud() {
-  const dailyQuota = quota();
+  const q = quota();
   $("#stat-cash").textContent = money(state.cash);
-  $("#stat-quota").textContent = `${money(state.dayEarned)} / ${money(dailyQuota)} oggi`;
+  $("#stat-quota").textContent = `${money(state.dayEarned)} / ${money(q)} oggi`;
   $("#stat-risk").textContent = `${Math.round(state.risk)}%`;
   $("#risk-fill").style.width = `${Math.min(100, state.risk)}%`;
   $("#stat-time").textContent = clockLabel();
@@ -198,57 +365,62 @@ function renderHud() {
   $("#wallet-apps").textContent = state.apps.size ? [...state.apps].join(", ") : "nessuna";
   if ($("#stat-combo")) $("#stat-combo").textContent = String(state.combo);
   if ($("#stat-hiscore")) $("#stat-hiscore").textContent = money(state.hiscore);
-  if ($("#wallet-hiscore")) $("#wallet-hiscore").textContent = money(state.hiscore);
   if ($("#stat-day")) $("#stat-day").textContent = String(state.day);
+  if ($("#wallet-hiscore")) $("#wallet-hiscore").textContent = money(state.hiscore);
   if ($("#wallet-day")) $("#wallet-day").textContent = `Giorno ${state.day}`;
-  if ($("#tray-day")) $("#tray-day").textContent = `G${state.day}`;
-  const title = $("#title");
-  if ($("#title-hiscore") && title && !title.classList.contains("hidden")) {
-    const saved = loadSave();
-    $("#title-hiscore").textContent = saved
-      ? `Salvataggio: Giorno ${state.day} · ${money(state.cash)} · Record ${money(state.hiscore)}`
+  if ($("#title-hiscore")) {
+    const save = loadSave();
+    $("#title-hiscore").textContent = save
+      ? `Salvataggio: Giorno ${save.day} · ${money(save.cash)} · Record ${money(state.hiscore)}`
       : `Record: ${money(state.hiscore)}`;
-    const startButton = $("#btn-start");
-    if (startButton) startButton.textContent = saved ? `Apri desktop · Giorno ${state.day}` : "Apri desktop";
   }
-  const left = Math.max(0, dailyQuota - state.dayEarned);
+  if ($("#tray-day")) $("#tray-day").textContent = `G${state.day}`;
+  const left = Math.max(0, q - state.dayEarned);
   if ($("#goal-banner")) {
     $("#goal-banner").textContent =
       left > 0
-        ? `Giorno ${state.day}: ancora ${money(left)} alla quota · cassa totale ${money(state.cash)}`
+        ? `Giorno ${state.day}: ancora ${money(left)} alla quota di oggi · cassa totale ${money(state.cash)}`
         : `Quota giorno ${state.day} fatta! Chiudi la giornata o continua a rischiare.`;
+  }
+  const startBtn = $("#btn-start");
+  if (startBtn && $("#title") && !$("#title").classList.contains("hidden")) {
+    const save = loadSave();
+    startBtn.textContent = save ? `Apri desktop · Giorno ${save.day}` : "Apri desktop";
   }
   updateBeginMatchButton();
   updateTrustHint();
+  updateDesktopRisk();
+  renderObjectives();
+  renderStoryBanner();
 }
 
 function updateBeginMatchButton() {
-  const button = $("#btn-begin-match");
-  if (button) {
-    button.textContent = state.playing
-      ? `▶ Partita in corso (G${state.day})`
-      : `▶ Inizia partita · Giorno ${state.day}`;
-    button.disabled = state.playing;
+  const btn = $("#btn-begin-match");
+  if (!btn) return;
+  if (state.playing && !state.over) {
+    btn.textContent = `▶ Partita in corso (G${state.day})`;
+    btn.disabled = true;
+  } else {
+    btn.textContent = `▶ Inizia partita · Giorno ${state.day}`;
+    btn.disabled = false;
   }
-  const endButton = $("#btn-end-shift");
-  if (endButton) endButton.disabled = !state.playing;
 }
 
 function gainCash(amount) {
-  const earned = Math.max(0, Number(amount) || 0);
-  state.cash += earned;
-  state.dayEarned += earned;
+  const n = Math.max(0, Number(amount) || 0);
+  state.cash += n;
+  state.dayEarned += n;
   persistSave();
 }
 
 function spendCash(amount) {
-  const spent = Math.max(0, Number(amount) || 0);
-  state.cash = Math.max(0, state.cash - spent);
+  const n = Math.max(0, Number(amount) || 0);
+  state.cash = Math.max(0, state.cash - n);
   persistSave();
 }
 
 function checkDayQuota() {
-  if (state.playing && state.dayEarned >= quota()) endGame("quota");
+  if (state.dayEarned >= quota()) endGame("quota");
 }
 
 function renderCallHistory() {
@@ -295,7 +467,9 @@ function openWindow(name) {
 function closeWindow(name) {
   document.querySelector(`[data-window="${name}"]`)?.classList.add("hidden");
   state.openWins.delete(name);
+  if (name === "spectate") state.spectateId = null;
   renderTaskbar();
+  scheduleDeskPush();
 }
 
 function renderTaskbar() {
@@ -322,10 +496,11 @@ function addRisk(amount, reason) {
   if (state.apps.has("mule-router") && reason === "shop") delta *= 0.75;
   if (state.apps.has("mule-router") && reason === "time") delta *= 1.25;
   if (state.apps.has("malwhere-bytes") && reason === "call") delta *= 1.05;
-  state.risk = Math.min(100, state.risk + delta);
+  state.risk = Math.max(0, Math.min(100, state.risk + delta));
   renderHud();
   pushNetSync();
-  if (state.risk >= 100) endGame("swat");
+  updateDesktopRisk();
+  if (state.risk >= 100) endGame("hack");
   else if (state.risk >= 85 && Math.random() < 0.35) triggerHackScare();
 }
 
@@ -352,7 +527,6 @@ function applyNetSync(s) {
   if (s.dayEarned != null) state.dayEarned = Math.max(0, Number(s.dayEarned) || 0);
   if (Array.isArray(s.codes)) state.codes = s.codes;
   if (Array.isArray(s.apps)) state.apps = new Set(s.apps);
-  persistSave();
   renderHud();
   renderCodes();
   renderApps();
@@ -364,46 +538,68 @@ function triggerHackScare() {
   toast("Intrusione rilevata sulla rete del call center…");
   addRisk(8, "hack");
   if (state.risk >= 100) return;
-  if (Math.random() < 0.4) endGame("hack");
+  if (Math.random() < 0.3) endGame("hack");
 }
 
 function endGame(kind) {
   if (state.over) return;
   state.over = true;
   state.playing = false;
-  state.retryPending = kind === "swat" || kind === "hack";
+  state.endKind = kind;
   clearInterval(state.tick);
   state.tick = null;
+  updateBeginMatchButton();
   clearTimeout(state.ttsRetry);
+  clearBaiterTimer();
   stopSpeaking();
   stopRingtone();
   hangUp(true);
+  stopCallTimer();
+
   const title = $("#overlay-title");
   const body = $("#overlay-body");
-  const button = $("#overlay-restart");
-  const completedDay = state.day;
+  const btn = $("#overlay-restart");
   const record = saveHiscore(state.cash);
   const recordLine = record ? ` Nuovo record: ${money(state.cash)}!` : ` Record: ${money(state.hiscore)}.`;
-  if (kind === "swat") {
-    title.textContent = "SWAT alla porta";
-    body.textContent = `Troppo rumore. Qualcuno ha segnalato il call center. Cassa: ${money(state.cash)}. Riprova il giorno ${state.day}.${recordLine}`;
-  } else if (kind === "hack") {
-    title.textContent = "Siete stati hackerati";
+
+  // Bonus obiettivi SOLO a fine giornata “pulita” (quota / orario), non su baiter/hack
+  let bonusLine = "";
+  if (kind === "quota" || kind === "time") {
+    const stats = {
+      ...state.dayStats,
+      endRisk: state.risk,
+      maxCombo: Math.max(state.dayStats.maxCombo || 0, state.combo || 0),
+    };
+    const evaluated = evaluateObjectives(state.dayObjectives, stats);
+    const bonus = sumObjectiveRewards(evaluated);
+    if (bonus > 0) {
+      gainCash(bonus);
+      const done = evaluated.filter((o) => o.done).map((o) => o.label);
+      bonusLine = ` Bonus obiettivi: +${money(bonus)} (${done.join("; ")}).`;
+    } else {
+      bonusLine = " Nessun bonus obiettivo completato.";
+    }
+  }
+
+  if (kind === "hack") {
     const lost = Math.floor(state.cash * 0.5);
     state.cash = Math.max(0, state.cash - lost);
-    body.textContent = `Un baiter ha colpito la rete. Perdi ${money(lost)}, restano ${money(state.cash)}. Riprova il giorno ${state.day}.${recordLine}`;
+    title.textContent = "Siete stati hackerati";
+    body.textContent = `Un baiter ha colpito la rete. Perdi ${money(lost)}, restano ${money(state.cash)}. Torna al desktop e da start → Inizia partita (stesso giorno).${recordLine}`;
+    if (btn) btn.textContent = `Torna al desktop · G${state.day}`;
+  } else if (kind === "baiter" || kind === "swat") {
+    title.textContent = "SWAT alla porta";
+    body.textContent = `Quella “vittima” era un baiter. Dopo 3 minuti ha fatto partire la SWAT. Giornata bruciata — cassa intatta: ${money(state.cash)}. Nessun bonus. Riaggancia prima, la prossima volta.${recordLine}`;
+    if (btn) btn.textContent = `Torna al desktop · G${state.day}`;
   } else if (kind === "quota") {
-    title.textContent = `Giorno ${completedDay} — quota fatta`;
-    body.textContent = `Il capo è quasi contento. Cassa: ${money(state.cash)}. Il giorno ${state.day + 1} è pronto.${recordLine}`;
+    title.textContent = `Giorno ${state.day} — quota fatta`;
+    body.textContent = `Il capo è quasi contento. Cassa: ${money(state.cash)}.${bonusLine} Poi start → Inizia partita per il giorno ${state.day + 1}.${recordLine}`;
+    if (btn) btn.textContent = `Desktop · poi giorno ${state.day + 1}`;
   } else {
-    title.textContent = `Giorno ${completedDay} finito`;
-    body.textContent = `Cassa: ${money(state.cash)}. Giorno ${state.day + 1} pronto.${recordLine}`;
+    title.textContent = `Giorno ${state.day} finito`;
+    body.textContent = `Orario chiuso. Cassa: ${money(state.cash)}.${bonusLine} Da start → Inizia partita per il giorno ${state.day + 1}.${recordLine}`;
+    if (btn) btn.textContent = `Desktop · poi giorno ${state.day + 1}`;
   }
-  if (kind === "quota" || kind === "time") {
-    state.day += 1;
-    state.dayEarned = 0;
-  }
-  if (button) button.textContent = `Torna al desktop · G${state.day}`;
   persistSave();
   renderHud();
   $("#overlay").classList.remove("hidden");
@@ -491,6 +687,7 @@ function appendChat(role, name, text) {
       salt: caller?.id || name,
     });
   }
+  scheduleDeskPush();
 }
 
 function escapeHtml(s) {
@@ -576,12 +773,13 @@ function parseMoneyAmount(text) {
   return null;
 }
 
-/** True solo se il giocatore chiede esplicitamente un codice / gift card. */
+/**
+ * True solo se chiede ESPLICITAMENTE un codice/gift da pagare.
+ * Parlare di “premio/vinto” NON basta (prima dava gift subito per errore).
+ */
 function playerAsksForCode(text) {
   if (!text) return false;
-  const intent = detectIntent(text);
-  if (intent === "code" || intent === "prize") return true;
-  return /\b(codice|gift\s*card|carta\s*regalo|buono\s*(amazon|regalo)?|riscatt|scamazzon|dammi.{0,24}(codice|gift|carta|buono)|pag(a|hi|are|amento).{0,40}(gift|codice|carta\s*regalo|buono)|antivirus.{0,20}(codice|gift|carta)|install.{0,20}(app|antivirus).{0,30}(codice|gift|carta))\b/i.test(
+  return /\b(codice(\s+della)?(\s+gift)?|gift\s*card|carta\s*regalo|buono\s*(amazon|regalo|scamazzon)?|riscatt|scamazzon|dammi.{0,28}(codice|gift|carta|buono)|mand(ami|a).{0,20}(codice|gift|carta)|pag(a|hi|are|amento).{0,40}(gift|codice|carta\s*regalo|buono)|antivirus.{0,24}(codice|gift|carta)|install.{0,24}(app|antivirus).{0,36}(codice|gift|carta)|mi (serve|servono|servirebbe).{0,20}(codice|gift|carta|buono))\b/i.test(
     text
   );
 }
@@ -611,6 +809,29 @@ function makeCodeForAmount(_caller, _amount) {
   return makeRandomGiftCode();
 }
 
+/** Forza un codice gift random nel dialogo (mai riusare codice AI / statico). */
+function withFreshGiftCode(reply, amount, caller) {
+  const amt = Math.max(25, Math.min(500, Number(amount) || caller?.codeValue || 100));
+  const code = makeRandomGiftCode();
+  let dialogue = String(reply?.dialogue || "");
+  if (hasGiftCode(dialogue)) {
+    dialogue = dialogue.replace(/\b([A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){1,4})\b/i, code);
+  } else {
+    dialogue = `Va bene… ecco il codice della gift card da $${amt}: ${code}.`;
+  }
+  if (!dialogue.includes(`$${amt}`) && !dialogue.includes(String(amt))) {
+    dialogue = dialogue.replace(/\$?\d{2,4}/, `$${amt}`);
+    if (!/\$\d+/.test(dialogue)) dialogue += ` (da $${amt})`;
+  }
+  return {
+    ...reply,
+    dialogue,
+    gaveCode: true,
+    code,
+    codeValue: amt,
+  };
+}
+
 function showCallPopup(caller) {
   state.pendingCaller = caller;
   const popImg = $("#call-popup-avatar-img");
@@ -630,9 +851,29 @@ function hideCallPopup() {
   state.pendingCaller = null;
 }
 
+function rememberCaller(id) {
+  if (!id) return;
+  state.recentCallerIds = [id, ...state.recentCallerIds.filter((x) => x !== id)].slice(0, 4);
+}
+
+function rememberProblem(summary) {
+  if (!summary) return;
+  state.recentProblems = [
+    summary,
+    ...state.recentProblems.filter((x) => x !== summary),
+  ].slice(0, 5);
+}
+
 function ringIncoming() {
   if (!state.playing || state.over || state.call || state.pendingCaller) return;
-  const caller = pickCaller(state.call?.caller?.id);
+  let caller;
+  if (state.bossPending) {
+    caller = bossForDay(state.day) || pickCaller(state.recentCallerIds);
+    state.bossPending = false;
+    toast(`📖 Storia: chiama ${caller.name}`);
+  } else {
+    caller = maybeDisguiseBaiter(pickCaller(state.recentCallerIds), state.day);
+  }
   showCallPopup(caller);
 }
 
@@ -640,6 +881,7 @@ function acceptCall() {
   const caller = state.pendingCaller;
   if (!caller || state.call) return;
   sfxClick();
+  rememberCaller(caller.id);
   hideCallPopup();
   void startCall(caller);
 }
@@ -656,32 +898,36 @@ function rejectCall() {
 function rollRandomEvent() {
   if (state.over || state.call) return;
   const roll = Math.random();
-  if (roll < 0.33) {
+  if (roll < 0.34) {
     sfxEvent();
     toast("Collega: «Il capo controlla le quote… muoviti!»");
     addRisk(2, "event");
-  } else if (roll < 0.66) {
+  } else if (roll < 0.62) {
     sfxEvent();
-    toast("Baiter in ascolto sulla linea… rischio +");
-    addRisk(5, "event");
+    toast("In radio: attenzione alle linee strane. Qualcuno finge il tonto…");
+    addRisk(3, "event");
   } else {
     sfxEvent();
-    toast("Radio: possibile intervento. Abbassa il profilo.");
+    toast("Radio: abbassa il profilo, rischio +");
     addRisk(4, "event");
-    if (state.risk >= 75 && Math.random() < 0.25) endGame("swat");
   }
 }
 
 async function resolveProblem(caller) {
-  let problem = pickRandomProblem(caller);
+  let problem = pickRandomProblem(caller, state.recentProblems);
   if (state.ai?.provider && state.ai.provider !== "off") {
     try {
       const aiProblem = await aiGenerateProblem({ config: state.ai, caller });
-      if (aiProblem) problem = aiProblem;
+      if (aiProblem?.summary && state.recentProblems.includes(aiProblem.summary)) {
+        // AI ha riproposto un tema recente → tieni il pool random
+      } else if (aiProblem) {
+        problem = aiProblem;
+      }
     } catch (err) {
       toast(`Problema AI: ${err.message} — uso pool random`);
     }
   }
+  rememberProblem(problem.summary);
   return problem;
 }
 
@@ -698,6 +944,8 @@ async function startCall(caller) {
     gotCode: false,
     askedAmount: null,
     problem: null,
+    /** dopo la prima spiegazione non ripetere problem.explain */
+    toldProblem: false,
     playerTurns: 0,
     startedAt: clockLabel(),
   };
@@ -718,6 +966,14 @@ async function startCall(caller) {
   openWindow("phone");
   toast(`In linea con ${caller.name}…`);
   state.net?.sendToast(`${state.net.myName} in chiamata con ${caller.name}`);
+  state.dayStats.callsDone = (state.dayStats.callsDone || 0) + 1;
+  const ph = personaHint(caller);
+  if ($("#call-persona-hint")) {
+    $("#call-persona-hint").textContent = ph ? `Personalità: ${ph}` : "";
+    $("#call-persona-hint").classList.toggle("hidden", !ph);
+  }
+  startCallTimer();
+  armBaiterTimer(caller);
 
   const problem = await resolveProblem(caller);
   if (!state.call || state.call.caller !== caller) {
@@ -742,6 +998,7 @@ async function startCall(caller) {
   setCallUi(true);
   if (mic.supported) mic.startLive();
   updateMicButton();
+  scheduleDeskPush(true);
 }
 
 /** @deprecated use ringIncoming / acceptCall */
@@ -765,8 +1022,20 @@ function updateTrust(delta) {
   }
 }
 
+function applyPersonalityTrust(playerText, intent) {
+  if (!state.call) return 0;
+  const mod = personalityTrustMod(state.call.caller, playerText, intent);
+  if (mod) updateTrust(mod);
+  return mod;
+}
+
 async function handlePlayerMessage(text) {
   if (!state.call || state.busy || state.over) return;
+  // Se ci controllano via AnyDesk’t, solo il remoto può scrivere (tranne se il msg arriva già da remoto)
+  if (state.controlledBy && !handlePlayerMessage._fromRemote) {
+    toast("AnyDesk’t: un collega sta guidando — non puoi scrivere ora");
+    return;
+  }
   const caller = state.call.caller;
   rememberAskedAmount(text);
   appendChat("me", "Tu", text);
@@ -775,12 +1044,19 @@ async function handlePlayerMessage(text) {
   state.busy = true;
   $("#chat-send").disabled = true;
 
-  const wantsCode = playerAsksForCode(text);
-  const asked = state.call.askedAmount || (wantsCode ? caller.codeValue : null);
+  // Gift solo se richiesta esplicita E abbastanza turni/fiducia (evita “premio” → codice subito)
+  const rawWantsCode = playerAsksForCode(text);
+  const wantsCode =
+    rawWantsCode &&
+    (state.call.playerTurns >= 2 || state.call.trust >= 70) &&
+    !caller.isBaiter;
+  const asked = state.call.askedAmount || (rawWantsCode ? caller.codeValue : null);
   const problem = state.call.problem;
+  const intent = detectIntent(text);
+  applyPersonalityTrust(text, intent);
 
-  // Gift troppo presto → fiducia giù
-  if (wantsCode && state.call.playerTurns <= 2 && state.call.trust < 65) {
+  // Gift troppo presto → fiducia giù (anche solo tentativo esplicito)
+  if (rawWantsCode && state.call.playerTurns <= 2 && state.call.trust < 65) {
     updateTrust(-14);
     toast("Troppo presto per la gift — si è insospettito");
     addRisk(3, "call");
@@ -813,8 +1089,17 @@ async function handlePlayerMessage(text) {
       toast("💡 Hint: chiedi del suo problema, poi la gift — l’AI ha fallito, uso script");
     }
     const pendingCode = makeRandomGiftCode();
-    const scripted = scriptReply(caller, text, asked || caller.codeValue, problem, pendingCode);
+    const scriptOpts = { alreadyToldProblem: Boolean(state.call.toldProblem) };
+    const scripted = scriptReply(
+      caller,
+      text,
+      asked || caller.codeValue,
+      problem,
+      pendingCode,
+      scriptOpts
+    );
     let dialogue = scripted.text;
+    if (scripted.usedProblem) state.call.toldProblem = true;
     // Mai dare codice se non l'ha chiesto
     if (!wantsCode) {
       if (hasGiftCode(dialogue)) {
@@ -823,11 +1108,12 @@ async function handlePlayerMessage(text) {
           detectIntent(text) === "tech" ? "tecnico computer" : "ho bisogno di aiuto",
           caller.codeValue,
           problem,
-          pendingCode
+          pendingCode,
+          { alreadyToldProblem: true }
         );
         dialogue = stripCodesFromText(safe.text);
         if (!dialogue || dialogue.length < 8) {
-          dialogue = problem?.explain || "Capisco… e adesso cosa dovrei fare? Mi spieghi meglio?";
+          dialogue = "Capisco… e adesso cosa dovrei fare? Mi spieghi meglio?";
         }
       }
       reply = { dialogue, trustDelta: scripted.trustDelta, gaveCode: false, codeValue: null, code: null };
@@ -863,8 +1149,11 @@ async function handlePlayerMessage(text) {
       reply.dialogue
     )
   ) {
-    reply.dialogue = problem?.explain || scriptReply(caller, "mi serve aiuto", asked || caller.codeValue, problem).text;
-    reply.dialogue = stripCodesFromText(reply.dialogue);
+    const fix = scriptReply(caller, text, asked || caller.codeValue, problem, null, {
+      alreadyToldProblem: Boolean(state.call.toldProblem),
+    });
+    reply.dialogue = stripCodesFromText(fix.text);
+    if (fix.usedProblem) state.call.toldProblem = true;
     reply.trustDelta = 6;
     reply.gaveCode = false;
   }
@@ -903,37 +1192,96 @@ async function handlePlayerMessage(text) {
     }
   }
 
+  // Baiter: mai gift vere — sostituisci qualsiasi codice con nonsense
+  if (caller.isBaiter && (wantsCode || reply.gaveCode || hasGiftCode(reply.dialogue))) {
+    reply = {
+      ...reply,
+      dialogue: baiterEvasionLine(),
+      gaveCode: false,
+      code: null,
+      codeValue: null,
+    };
+  }
+
+  // Codice gift: sempre random e allineato a chat + portafoglio (solo al primo o in correzione)
+  if (
+    !caller.isBaiter &&
+    wantsCode &&
+    (reply.gaveCode || hasGiftCode(reply.dialogue) || correcting) &&
+    (!state.call.gotCode || correcting)
+  ) {
+    reply = withFreshGiftCode(reply, asked || reply.codeValue || caller.codeValue, caller);
+  }
+
+  // Anti-ripetizione: niente stessa battuta di fila (anche tra follow-up)
+  const themLines = (state.call.history || []).filter((h) => h.role === "them").map((h) => h.text);
+  const lastThem = themLines[themLines.length - 1];
+  const norm = (s) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  const blocked = themLines.slice(-3);
+  let guard = 0;
+  while (
+    guard < 6 &&
+    reply.dialogue &&
+    (blocked.some((t) => norm(t) === norm(reply.dialogue)) ||
+      (state.call.toldProblem && problem?.explain && norm(reply.dialogue) === norm(problem.explain)))
+  ) {
+    const alt = scriptReply(caller, text, asked || caller.codeValue, problem, null, {
+      alreadyToldProblem: true,
+      excludeTexts: [...blocked, reply.dialogue],
+    });
+    reply.dialogue = alt.text;
+    reply.gaveCode = false;
+    guard += 1;
+  }
+  if (problem?.explain && norm(reply.dialogue) === norm(problem.explain)) {
+    state.call.toldProblem = true;
+  }
+  if (lastThem && norm(reply.dialogue) === norm(lastThem) && problem?.explain) {
+    // ultimo fallback: parafrasi obbligatoria del problema
+    reply.dialogue = `Scusi, ripeto chiaro: ${problem.explain}`;
+    reply.gaveCode = false;
+  }
+
   appendChat("them", caller.name, reply.dialogue);
   state.call.history.push({ role: "them", text: reply.dialogue });
   updateTrust(reply.trustDelta || 0);
   addRisk(1.5, "call");
   updateTrustHint();
 
-  // Retry TTS solo se ancora in chiamata e niente audio partito (non al mute)
+  // TTS: appendChat parla già; se Chrome fallisce, ritenta senza sovrascrivere se sta parlando
   clearTimeout(state.ttsRetry);
   if (isTtsEnabled() && reply.dialogue) {
     const line = reply.dialogue;
     const callRef = state.call;
-    state.ttsRetry = setTimeout(() => {
-      if (state.call !== callRef || state.over) return;
-      if (!window.speechSynthesis?.speaking && !window.speechSynthesis?.pending) {
-        speakNpc(line, {
-          voice: caller.voice || "elder_female",
-          salt: caller.id,
-          immediate: true,
-        });
-      }
-    }, 450);
+    const voiceOpts = {
+      voice: caller.voice || "elder_female",
+      salt: caller.id,
+      immediate: true,
+    };
+    const bump = (ms) => {
+      clearTimeout(state.ttsRetry);
+      state.ttsRetry = setTimeout(() => {
+        if (state.call !== callRef || state.over || !isTtsEnabled()) return;
+        if (isNpcSpeaking()) return;
+        speakNpc(line, voiceOpts);
+      }, ms);
+    };
+    bump(700);
+    setTimeout(() => {
+      if (state.call !== callRef || state.over || !isTtsEnabled()) return;
+      if (isNpcSpeaking()) return;
+      speakNpc(line, voiceOpts);
+    }, 1400);
   }
 
-  const codeInText = reply.dialogue.match(/\b([A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){1,4})\b/i);
-  if (wantsCode && (reply.gaveCode || codeInText) && state.call && !state.call.gotCode) {
-    const code = reply.code || codeInText?.[1] || makeRandomGiftCode();
-    const value = reply.codeValue || asked || caller.codeValue;
-    grantCode(caller, code, value);
-  } else if (wantsCode && state.call?.gotCode && asked && (codeInText || correcting)) {
-    const code = reply.code || codeInText?.[1] || makeRandomGiftCode();
-    upgradeCode(code, asked, caller.name);
+  if (wantsCode && reply.gaveCode && reply.code && state.call && !state.call.gotCode) {
+    grantCode(caller, reply.code, reply.codeValue || asked || caller.codeValue);
+  } else if (wantsCode && state.call?.gotCode && asked && reply.gaveCode && reply.code) {
+    upgradeCode(reply.code, asked, caller.name);
   }
 
   state.busy = false;
@@ -945,6 +1293,7 @@ async function handlePlayerMessage(text) {
 }
 
 function grantCode(caller, code, value) {
+  if (caller?.isBaiter) return;
   const finalCode = (code || makeRandomGiftCode()).toUpperCase();
   if (state.codes.some((c) => c.code === finalCode && !c.redeemed)) {
     if (state.call) state.call.gotCode = true;
@@ -955,7 +1304,10 @@ function grantCode(caller, code, value) {
   if (state.apps.has("gift-washer")) v = Math.round(v * 1.1);
   state.codes.push({ code: finalCode, value: v, from: caller.name, redeemed: false });
   state.combo += 1;
+  state.dayStats.codesWon = (state.dayStats.codesWon || 0) + 1;
+  state.dayStats.maxCombo = Math.max(state.dayStats.maxCombo || 0, state.combo);
   toast(`Codice ottenuto: ${finalCode} ($${v}) · combo ×${state.combo}`);
+  renderObjectives();
   pushLog(`Codice da ${caller.name}: ${finalCode} → $${v}`);
   renderCodes();
   renderHud();
@@ -996,10 +1348,14 @@ function hangUp(silent) {
   });
   renderCallHistory();
 
+  const wasBaiter = Boolean(ended.caller?.isBaiter);
+  const heldMs = state.callStartedAt ? Date.now() - state.callStartedAt : 0;
   state.call = null;
   mic.stopLive();
   micTextPrefix = null;
   setCallUi(false);
+  stopCallTimer();
+  clearBaiterTimer();
   $("#chat-log").innerHTML = "";
   $("#chat-input").value = "";
   $("#mic-status").textContent = "";
@@ -1007,14 +1363,21 @@ function hangUp(silent) {
   $("#call-trust-fill").style.width = "0%";
   $("#caller-name").textContent = "In attesa…";
   $("#caller-meta").textContent = "Nessuna chiamata attiva";
+  $("#call-persona-hint")?.classList.add("hidden");
   setCallerPortrait(null);
   setChatEmpty(true);
   $("#phone-badge").classList.add("hidden");
   updateTrustHint();
   if (!silent) {
     sfxHangup();
-    toast("Chiamata terminata");
+    if (wasBaiter && heldMs < BAITER_LIMIT_MS) {
+      toast("Hai riagganciato in tempo — era un baiter camuffato.");
+      addRisk(-4, "call");
+    } else {
+      toast("Chiamata terminata");
+    }
   }
+  scheduleDeskPush(true);
 }
 
 // clear pending ring on shift end handled via hide in startShift
@@ -1040,20 +1403,25 @@ function renderApps() {
   grid.innerHTML = "";
   for (const app of APPS) {
     const owned = state.apps.has(app.id);
-    const dayLocked = state.day < (app.unlockDay || 1) && !owned;
-    const requiredCash = Math.max(app.price, app.unlockAt);
-    const cashLocked = state.cash < requiredCash && !owned;
-    const locked = dayLocked || cashLocked;
+    const dayLock = state.day < (app.unlockDay || 1);
+    const cashLock = state.cash < (app.unlockAt || 0) && !owned;
+    const locked = dayLock || cashLock;
+    let lockLabel = "Installa";
+    if (owned) lockLabel = "OK";
+    else if (dayLock) lockLabel = `Giorno ${app.unlockDay}`;
+    else if (cashLock) lockLabel = `Serve ${money(app.unlockAt)}`;
     const card = document.createElement("article");
-    card.className = `card${dayLocked ? " card--locked" : ""}`;
+    card.className = "card" + (dayLock && !owned ? " card--locked" : "");
     card.innerHTML = `
       <h4>${app.name}</h4>
       <p>${app.desc}</p>
-      <span class="price">${owned ? "Installata" : money(app.price)}</span>
+      <span class="price">${
+        owned ? "Installata" : dayLock ? `Sblocco giorno ${app.unlockDay}` : money(app.price)
+      }</span>
       <button type="button" class="xp-btn ${owned ? "" : "xp-btn--default"}" ${
         owned || locked || state.cash < app.price ? "disabled" : ""
       } data-buy-app="${app.id}">
-        ${owned ? "OK" : dayLocked ? `Giorno ${app.unlockDay}` : cashLocked ? `Serve ${money(requiredCash)}` : "Installa"}
+        ${lockLabel}
       </button>`;
     grid.appendChild(card);
   }
@@ -1069,19 +1437,28 @@ function renderHustles() {
   if (!grid) return;
   grid.innerHTML = "";
   for (const h of HUSTLES) {
+    const dayLock = state.day < (h.unlockDay || 1);
     const need = h.needApp && !state.apps.has(h.needApp);
     const wait = hustleReadyIn(h.id);
     const canPay = state.cash >= (h.cost || 0);
     const card = document.createElement("article");
-    card.className = "card";
+    card.className = "card" + (dayLock ? " card--locked" : "");
     const cd = wait > 0 ? `CD ${Math.ceil(wait / 1000)}s` : `${money(h.payout[0])}–${money(h.payout[1])}`;
+    let btn = "Esegui";
+    if (dayLock) btn = `Giorno ${h.unlockDay}`;
+    else if (need) btn = "Serve app";
+    else if (wait > 0) btn = "Attendi";
     card.innerHTML = `
       <h4>${h.name}</h4>
       <p>${h.desc}</p>
-      <span class="price">${h.cost ? `Costo ${money(h.cost)} · ` : ""}${cd} · rischio ${h.risk}</span>
+      <span class="price">${
+        dayLock
+          ? `Sblocco giorno ${h.unlockDay}`
+          : `${h.cost ? `Costo ${money(h.cost)} · ` : ""}${cd} · rischio ${h.risk}`
+      }</span>
       <button type="button" class="xp-btn xp-btn--default" data-hustle="${h.id}" ${
-        need || wait > 0 || !canPay ? "disabled" : ""
-      }>${need ? "Serve app" : wait > 0 ? "Attendi" : "Esegui"}</button>`;
+        dayLock || need || wait > 0 || !canPay ? "disabled" : ""
+      }>${btn}</button>`;
     grid.appendChild(card);
   }
 }
@@ -1101,6 +1478,10 @@ function runHustle(id) {
     toast("Soldi insufficienti");
     return;
   }
+  if (state.day < (h.unlockDay || 1)) {
+    toast(`Sbloccato dal giorno ${h.unlockDay}`);
+    return;
+  }
   spendCash(h.cost || 0);
   const gain = rollPayout(h);
   gainCash(gain);
@@ -1109,34 +1490,50 @@ function runHustle(id) {
   pushLog(`Hustle ${h.name}: +${money(gain)}`);
   sfxRedeem();
   toast(`${h.name}: +${money(gain)}`);
+  state.dayStats.hustlesDone = (state.dayStats.hustlesDone || 0) + 1;
   state.net?.sendToast(`${state.net.myName} ha fatto ${h.name} (+${gain})`);
   renderHud();
   renderHustles();
   renderApps();
   renderCards();
+  renderObjectives();
   pushNetSync();
   checkDayQuota();
-  if (state.risk >= 92 && Math.random() < 0.2) endGame("swat");
+  if (state.risk >= 92 && Math.random() < 0.2) addRisk(6, "shop");
 }
 
 function renderCards() {
-  const unlocked = state.cash >= 400 || state.apps.has("dark-drop");
+  const unlocked =
+    state.day >= 2 && (state.cash >= 400 || state.apps.has("dark-drop"));
   state.cardsUnlocked = unlocked;
   $("#cards-lock").classList.toggle("hidden", unlocked);
   const grid = $("#card-grid");
   grid.classList.toggle("hidden", !unlocked);
-  if (!unlocked) return;
+  if (!unlocked) {
+    if ($("#cards-lock")) {
+      $("#cards-lock").textContent =
+        state.day < 2
+          ? "Carte: disponibili dal giorno 2 (serve anche DarkDrop o $400)."
+          : "Sblocca DarkDrop o raggiungi $400 per le carte.";
+    }
+    return;
+  }
   grid.innerHTML = "";
   for (const card of CARDS) {
+    const dayLock = state.day < (card.unlockDay || 1);
     const el = document.createElement("article");
-    el.className = "card";
+    el.className = "card" + (dayLock ? " card--locked" : "");
     el.innerHTML = `
       <h4>${card.name}</h4>
       <p>${card.desc}</p>
-      <span class="price">${money(card.price)} → +${money(card.payout)}</span>
+      <span class="price">${
+        dayLock
+          ? `Sblocco giorno ${card.unlockDay}`
+          : `${money(card.price)} → +${money(card.payout)}`
+      }</span>
       <button type="button" class="xp-btn xp-btn--default" ${
-        state.cash < card.price ? "disabled" : ""
-      } data-buy-card="${card.id}">Usa</button>`;
+        dayLock || state.cash < card.price ? "disabled" : ""
+      } data-buy-card="${card.id}">${dayLock ? `Giorno ${card.unlockDay}` : "Usa"}</button>`;
     grid.appendChild(el);
   }
 }
@@ -1167,28 +1564,39 @@ function redeemCode(raw) {
 
 function buyApp(id) {
   const app = APPS.find((a) => a.id === id);
-  if (!app || state.apps.has(id)) return;
+  if (!app || state.apps.has(id) || state.cash < app.price) return;
   if (state.day < (app.unlockDay || 1)) {
     toast(`App disponibile dal giorno ${app.unlockDay}`);
     return;
   }
-  if (state.cash < app.unlockAt || state.cash < app.price) return;
+  if (state.cash < (app.unlockAt || 0)) {
+    toast(`Serve almeno ${money(app.unlockAt)} in cassa`);
+    return;
+  }
   spendCash(app.price);
   state.apps.add(id);
   persistSave();
   addRisk(app.risk, "shop");
   pushLog(`Installata ${app.name}`);
-  toast(`${app.name} installata`);
+  toast(`${app.name} installata — icona sul desktop`);
+  state.dayStats.appsBought = (state.dayStats.appsBought || 0) + 1;
   renderHud();
   renderApps();
   renderHustles();
   renderCards();
+  renderDesktopApps();
+  renderObjectives();
   pushNetSync();
+  scheduleDeskPush(true);
 }
 
 function buyCard(id) {
   const card = CARDS.find((c) => c.id === id);
   if (!card || state.cash < card.price) return;
+  if (state.day < (card.unlockDay || 1)) {
+    toast(`Carta disponibile dal giorno ${card.unlockDay}`);
+    return;
+  }
   spendCash(card.price);
   gainCash(card.payout);
   addRisk(card.risk, "shop");
@@ -1196,7 +1604,7 @@ function buyCard(id) {
   toast("Operazione carta completata… qualcuno ti osserva.");
   renderHud();
   renderCards();
-  if (state.risk >= 70 && Math.random() < 0.45) endGame("swat");
+  if (state.risk >= 70 && Math.random() < 0.45) addRisk(8, "shop");
   else checkDayQuota();
 }
 
@@ -1225,21 +1633,41 @@ function applyProviderDefaults() {
   }
 }
 
-function enterDesktop() {
-  const saved = loadSave();
-  if (saved) applySave(saved);
+/** Entra al desktop senza far partire le chiamate. */
+function enterDesktop(opts = {}) {
+  const fromOverlay = Boolean(opts.fromOverlay);
+  const fresh = Boolean(opts.fresh);
+
+  if (fresh) wipeCampaign();
+  else if (fromOverlay) {
+    if (state.endKind !== "hack" && state.endKind !== "swat" && state.endKind !== "baiter") {
+      state.day += 1;
+    }
+    persistSave();
+  } else {
+    const save = loadSave();
+    if (save) applySave(save);
+  }
+
+  clearInterval(state.tick);
+  state.tick = null;
+  state.playing = false;
   state.risk = 8;
   state.minute = 0;
   state.codes = [];
+  state.dayEarned = 0;
   state.cardsUnlocked = false;
   state.call = null;
   state.busy = false;
   state.over = false;
-  state.playing = false;
+  state.endKind = null;
   state.openWins = new Set();
   state.combo = 0;
   state.hustleCd = {};
+  state.pendingCaller = null;
   loadHiscore();
+  persistSave();
+
   $("#wallet-log").innerHTML = "";
   renderCallHistory();
   $("#overlay").classList.add("hidden");
@@ -1249,56 +1677,66 @@ function enterDesktop() {
   $("#desktop").setAttribute("aria-hidden", "false");
   $$(".window").forEach((w) => w.classList.add("hidden"));
   hideCallPopup();
-  if (state.call) hangUp(true);
-  else {
-    stopSpeaking();
-    stopRingtone();
-  }
-  clearInterval(state.tick);
-  state.tick = null;
-  persistSave();
+  stopSpeaking();
+  stopRingtone();
   renderHud();
   renderCodes();
   renderApps();
   renderHustles();
   renderCards();
+  renderDesktopApps();
   renderTaskbar();
+  updateBeginMatchButton();
+  maybeShowTutorial();
+  scheduleDeskPush(true);
   toast(`Desktop pronto · start → Inizia partita (Giorno ${state.day})`);
 }
 
-function startShift() {
-  enterDesktop();
+/** Alias: overlay / nuova campagna → desktop in attesa di Inizia partita. */
+function startShift(opts = {}) {
+  enterDesktop(opts);
 }
 
+/** Start menu → fa partire timer e chiamate. */
 function beginMatch() {
-  if (state.playing) return;
+  if (state.playing && !state.over) {
+    toast("Partita già in corso");
+    return;
+  }
+  if ($("#desktop").classList.contains("hidden")) {
+    enterDesktop();
+  }
+
   state.playing = true;
   state.over = false;
-  state.risk = 8;
+  state.endKind = null;
+  state.busy = false;
+  state.risk = Math.max(8, state.risk || 8);
   state.minute = 0;
-  if (state.retryPending) state.dayEarned = 0;
-  state.retryPending = false;
+  state.dayEarned = 0;
   state.codes = [];
   state.combo = 0;
   state.hustleCd = {};
   state.call = null;
-  state.busy = false;
   state.pendingCaller = null;
+  state.recentCallerIds = [];
+  state.recentProblems = [];
+  state.dayObjectives = rollDayObjectives(state.day);
+  state.dayStats = {
+    codesWon: 0,
+    maxCombo: 0,
+    hustlesDone: 0,
+    callsDone: 0,
+    appsBought: 0,
+  };
+  state.bossPending = Boolean(storyBeatForDay(state.day));
   hideCallPopup();
   stopSpeaking();
   stopRingtone();
-  clearInterval(state.tick);
   persistSave();
 
   $("#start-menu").classList.add("hidden");
   $("#overlay").classList.add("hidden");
-  $("#overlay").setAttribute("aria-hidden", "true");
-  renderHud();
-  renderCodes();
-  renderApps();
-  renderHustles();
-  renderCards();
-  renderTaskbar();
   clearInterval(state.tick);
   state.tick = setInterval(() => {
     if (state.over || !state.playing) return;
@@ -1311,14 +1749,27 @@ function beginMatch() {
     if (state.minute >= 180) endGame("time");
     if (state.net?.isHost()) pushNetSync();
   }, 4000);
-  pushLog(`Partita iniziata · giorno ${state.day} · quota ${money(quota())}`);
-  toast(`Giorno ${state.day}: le chiamate stanno arrivando…`);
+
+  const beat = storyBeatForDay(state.day);
+  pushLog(
+    beat
+      ? `Partita · giorno ${state.day} · ${beat.title} · quota ${money(quota())}`
+      : `Partita iniziata · giorno ${state.day} · quota ${money(quota())}`
+  );
+  toast(
+    beat
+      ? `${beat.title} — le chiamate arrivano…`
+      : `Giorno ${state.day}: le chiamate stanno arrivando…`
+  );
   updateBeginMatchButton();
+  renderHud();
+  renderObjectives();
   openWindow("phone");
-  maybeShowTutorial();
+  if (beat) openWindow("stats");
   setTimeout(() => {
     if (state.playing && !state.over) ringIncoming();
   }, 1400);
+  scheduleDeskPush(true);
 }
 
 function maybeShowTutorial() {
@@ -1348,6 +1799,384 @@ function maybeShowTutorial() {
     sfxClick();
     finish();
   };
+}
+
+/* —— Desktop icone trascinabili + app installate —— */
+function loadIconPos() {
+  try {
+    return JSON.parse(localStorage.getItem(ICON_POS_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveIconPos(map) {
+  localStorage.setItem(ICON_POS_KEY, JSON.stringify(map));
+}
+
+function defaultPosFor(id, index) {
+  const col = Math.floor(index / 7);
+  const row = index % 7;
+  return { x: 14 + col * 108, y: 14 + row * 98 };
+}
+
+function applyIconPosition(el, id, index) {
+  const map = loadIconPos();
+  const p = map[id] || defaultPosFor(id, index);
+  el.style.left = `${p.x}px`;
+  el.style.top = `${p.y}px`;
+}
+
+function persistIconPosition(id, x, y) {
+  const map = loadIconPos();
+  map[id] = { x: Math.round(x), y: Math.round(y) };
+  saveIconPos(map);
+}
+
+function clampIconPos(x, y) {
+  const desk = $("#desktop-icons");
+  const maxX = Math.max(0, (desk?.clientWidth || 800) - 100);
+  const maxY = Math.max(0, (desk?.clientHeight || 500) - 90);
+  return {
+    x: Math.max(0, Math.min(maxX, x)),
+    y: Math.max(0, Math.min(maxY, y)),
+  };
+}
+
+function enableDeskDrag(el, id) {
+  if (el.dataset.dragReady) return;
+  el.dataset.dragReady = "1";
+  let dragging = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+  let origX = 0;
+  let origY = 0;
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return;
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    origX = parseFloat(el.style.left) || 0;
+    origY = parseFloat(el.style.top) || 0;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add("is-dragging");
+  });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (Math.abs(dx) + Math.abs(dy) > 5) moved = true;
+    if (!moved) return;
+    const next = clampIconPos(origX + dx, origY + dy);
+    el.style.left = `${next.x}px`;
+    el.style.top = `${next.y}px`;
+  });
+
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove("is-dragging");
+    try {
+      el.releasePointerCapture?.(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (moved) {
+      persistIconPosition(id, parseFloat(el.style.left) || 0, parseFloat(el.style.top) || 0);
+      el.dataset.suppressClick = "1";
+      setTimeout(() => delete el.dataset.suppressClick, 0);
+    }
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+
+function openInstalledTool(appId) {
+  const app = APPS.find((a) => a.id === appId);
+  if (!app) return;
+  $("#tool-title").textContent = app.name;
+  if ($("#tool-icon")) $("#tool-icon").textContent = app.emoji || "🛠";
+  $("#tool-body").innerHTML = `
+    <p><strong>${app.emoji || ""} ${app.name}</strong> — attiva sul desk.</p>
+    <p>${app.deskBlurb || app.desc}</p>
+    <p class="muted">Satira / fiction. Nessun effetto reale fuori dal gioco.</p>`;
+  openWindow("tool");
+}
+
+function renderDesktopApps() {
+  const root = $("#desktop-icons");
+  if (!root) return;
+
+  // Posiziona le icone di sistema
+  const core = [...root.querySelectorAll(".desk-icon:not(.desk-icon--app)")];
+  core.forEach((btn, i) => {
+    const id = btn.dataset.app || `core-${i}`;
+    applyIconPosition(btn, id, i);
+    enableDeskDrag(btn, id);
+  });
+
+  // Rimuovi app vecchie e ricrea da state.apps
+  root.querySelectorAll(".desk-icon--app").forEach((el) => el.remove());
+  let idx = core.length;
+  for (const appId of state.apps) {
+    const app = APPS.find((a) => a.id === appId);
+    if (!app) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "desk-icon desk-icon--app";
+    btn.dataset.appTool = app.id;
+    btn.innerHTML = `
+      <span class="desk-icon__tile" style="background:${app.color || "#38bdf8"}">${app.emoji || "📦"}</span>
+      <span class="desk-icon__label">${app.name}</span>`;
+    const posId = `app:${app.id}`;
+    applyIconPosition(btn, posId, idx);
+    enableDeskDrag(btn, posId);
+    btn.addEventListener("click", () => {
+      if (btn.dataset.suppressClick) return;
+      $$(".desk-icon").forEach((b) => b.classList.remove("is-selected"));
+      btn.classList.add("is-selected");
+      openInstalledTool(app.id);
+      sfxClick();
+    });
+    btn.addEventListener("dblclick", () => openInstalledTool(app.id));
+    root.appendChild(btn);
+    idx += 1;
+  }
+}
+
+/* —— Spectate co-op (sola lettura) —— */
+function buildDeskView() {
+  const call = state.call;
+  const myName = state.net?.myName || "Tu";
+  return {
+    name: myName,
+    day: state.day,
+    cash: state.cash,
+    risk: Math.round(state.risk),
+    minute: state.minute,
+    dayEarned: state.dayEarned,
+    apps: [...state.apps],
+    openWins: [...state.openWins],
+    status: call ? "in_call" : state.pendingCaller ? "ringing" : "idle",
+    call: call
+      ? {
+          callerName: call.caller.name,
+          callerAvatar: call.caller.avatar,
+          callerTag: call.caller.tag || "",
+          callerVoice: call.caller.voice || "elder_female",
+          trust: Math.round(call.trust),
+          problem: call.problem?.summary || "",
+          chat: (call.history || []).slice(-36).map((h) => ({
+            role: h.role,
+            name: h.role === "me" ? myName : call.caller.name,
+            text: h.text,
+          })),
+        }
+      : null,
+  };
+}
+
+function scheduleDeskPush(immediate = false) {
+  if (!state.net?.role) return;
+  clearTimeout(state.deskPushTimer);
+  const run = () => {
+    try {
+      state.net.pushDesk(buildDeskView());
+    } catch {
+      /* ignore */
+    }
+  };
+  if (immediate) run();
+  else state.deskPushTimer = setTimeout(run, 280);
+}
+
+function startDeskPushLoop() {
+  clearInterval(state._deskLoop);
+  state._deskLoop = setInterval(() => {
+    if (state.net?.role && state.net.peerCount() > 0) scheduleDeskPush(true);
+  }, 2500);
+}
+
+function updateSpectateRemoteUi() {
+  const remote = state.controllingId && state.controllingId === state.spectateId;
+  $("#spec-remote-form")?.classList.toggle("hidden", !remote);
+  $("#win-spectate")?.classList.toggle("is-remote", Boolean(remote));
+  if ($("#spectate-mode-banner")) {
+    $("#spectate-mode-banner").textContent = remote
+      ? "ANYDESK’T ATTIVO — puoi scrivere/riagganciare al posto loro"
+      : "SOLO VISIONE — senti la loro linea, non puoi interagire";
+  }
+}
+
+function renderSpectate(viewMsg) {
+  const view = viewMsg?.view;
+  if (!view) return;
+  const name = view.name || viewMsg.from || "Collega";
+  if ($("#spectate-title")) $("#spectate-title").textContent = `Spectate — ${name}`;
+  if ($("#spec-day")) $("#spec-day").textContent = `G${view.day ?? "?"}`;
+  if ($("#spec-cash")) $("#spec-cash").textContent = money(view.cash || 0);
+  if ($("#spec-risk")) $("#spec-risk").textContent = `⚠ ${view.risk ?? 0}%`;
+  if ($("#spec-time")) {
+    const m = view.minute ?? 0;
+    const h = START_HOUR + Math.floor(m / 60);
+    const mm = m % 60;
+    $("#spec-time").textContent = `${h}:${String(mm).padStart(2, "0")}`;
+  }
+  const call = view.call;
+  const av = $("#spec-avatar");
+  const chatLines = call?.chat || [];
+  // Audio spectate: parla le nuove battute NPC (e operatore) senza interagire
+  if (state.spectateId && chatLines.length > state.lastSpecChatLen) {
+    const fresh = chatLines.slice(state.lastSpecChatLen);
+    for (const line of fresh) {
+      if (line.role === "them") {
+        speakNpc(line.text, {
+          voice: call.callerVoice || "elder_female",
+          salt: call.callerName || "spec",
+        });
+      } else if (line.role === "me" && line.text) {
+        speakNpc(line.text, {
+          voice: "young_male",
+          salt: "operator-" + name,
+          rate: 1.05,
+        });
+      }
+    }
+  }
+  state.lastSpecChatLen = chatLines.length;
+
+  if (call) {
+    if (av) {
+      av.src = call.callerAvatar || "";
+      av.classList.toggle("hidden", !call.callerAvatar);
+    }
+    if ($("#spec-caller")) $("#spec-caller").textContent = call.callerName || "Chiamata";
+    if ($("#spec-meta")) {
+      $("#spec-meta").textContent = call.problem
+        ? `${call.callerTag || ""} · ${call.problem} · fiducia ${call.trust}%`
+        : `In chiamata · fiducia ${call.trust}%`;
+    }
+    if ($("#spec-trust-fill")) $("#spec-trust-fill").style.width = `${call.trust || 0}%`;
+    const chat = $("#spec-chat");
+    if (chat) {
+      chat.innerHTML = "";
+      for (const line of chatLines) {
+        const div = document.createElement("div");
+        div.className = `bubble bubble--${line.role === "me" ? "me" : "them"}`;
+        div.innerHTML = `<small>${escapeHtml(line.name || "")}</small><div>${escapeHtml(line.text || "")}</div>`;
+        chat.appendChild(div);
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+  } else {
+    state.lastSpecChatLen = 0;
+    if (av) {
+      av.removeAttribute("src");
+      av.classList.add("hidden");
+    }
+    if ($("#spec-caller")) $("#spec-caller").textContent = "Nessuna chiamata";
+    if ($("#spec-meta")) {
+      $("#spec-meta").textContent =
+        view.status === "ringing" ? "Sta squillando…" : "Al desk, in attesa";
+    }
+    if ($("#spec-trust-fill")) $("#spec-trust-fill").style.width = "0%";
+    if ($("#spec-chat")) {
+      $("#spec-chat").innerHTML = `<p class="muted" style="padding:8px">Nessuna chat attiva. App aperte: ${(view.openWins || []).join(", ") || "—"}</p>`;
+    }
+  }
+  const remote = state.controllingId === state.spectateId;
+  if ($("#spec-status")) {
+    $("#spec-status").textContent = remote
+      ? `Controlli ${name} via AnyDesk’t`
+      : `Vista di ${name} · audio ON · sola lettura`;
+  }
+  updateSpectateRemoteUi();
+}
+
+function openSpectate(peerId) {
+  const snap = state.peerDesks[peerId];
+  state.spectateId = peerId;
+  state.lastSpecChatLen = 0;
+  openWindow("spectate");
+  updateSpectateRemoteUi();
+  if (snap) renderSpectate(snap);
+  else if ($("#spec-status")) {
+    $("#spec-status").textContent = "In attesa dello schermo del collega…";
+  }
+  scheduleDeskPush(true);
+}
+
+function requestAnyDesk(peerId, peerName) {
+  if (!state.apps.has("remote-desk")) {
+    toast("Serve l’app AnyDesk’t (fake) installata");
+    return;
+  }
+  if (!peerId) return;
+  state.net?.sendToPeer(peerId, { kind: "anydesk-request", fromName: state.net.myName });
+  toast(`AnyDesk’t inviato a ${peerName || "collega"}…`);
+}
+
+function handlePeerNet(msg) {
+  if (!msg?.kind) return;
+  if (msg.kind === "anydesk-request") {
+    const ok = confirm(
+      `${msg.from || msg.fromName || "Collega"} chiede controllo AnyDesk’t della tua postazione. Accetti?`
+    );
+    state.net?.sendToPeer(msg.fromId, {
+      kind: ok ? "anydesk-accept" : "anydesk-reject",
+      fromName: state.net.myName,
+    });
+    if (ok) {
+      state.controlledBy = msg.fromId;
+      $("#remote-banner")?.classList.remove("hidden");
+      toast("AnyDesk’t attivo — ti stanno guidando");
+    }
+    return;
+  }
+  if (msg.kind === "anydesk-accept") {
+    state.controllingId = msg.fromId;
+    toast(`AnyDesk’t accettato da ${msg.from || "collega"}`);
+    openSpectate(msg.fromId);
+    return;
+  }
+  if (msg.kind === "anydesk-reject") {
+    toast("AnyDesk’t rifiutato");
+    return;
+  }
+  if (msg.kind === "anydesk-end") {
+    state.controllingId = null;
+    state.controlledBy = null;
+    $("#remote-banner")?.classList.add("hidden");
+    updateSpectateRemoteUi();
+    toast("Sessione AnyDesk’t chiusa");
+    return;
+  }
+  if (msg.kind === "remote-chat" && state.controlledBy === msg.fromId) {
+    if (state.call && !state.busy) {
+      handlePlayerMessage._fromRemote = true;
+      void handlePlayerMessage(String(msg.text || "")).finally(() => {
+        handlePlayerMessage._fromRemote = false;
+      });
+    } else toast("Remoto: non in chiamata / occupato");
+    return;
+  }
+  if (msg.kind === "remote-hangup" && state.controlledBy === msg.fromId) {
+    hangUp();
+  }
+}
+
+function sendRemoteChat(text) {
+  if (!state.controllingId || !text) return;
+  state.net?.sendToPeer(state.controllingId, { kind: "remote-chat", text });
+}
+
+function sendRemoteHangup() {
+  if (!state.controllingId) return;
+  state.net?.sendToPeer(state.controllingId, { kind: "remote-hangup" });
 }
 
 /** Prefisso già in textbox (digitato) prima che il mic inizi a dettare. */
@@ -1380,22 +2209,31 @@ const mic = createMic({
 });
 
 function wire() {
-  $("#btn-start").addEventListener("click", startShift);
+  $("#btn-start").addEventListener("click", () => startShift());
+  $("#btn-new-campaign")?.addEventListener("click", () => {
+    if (!confirm("Nuova campagna? Perdi giorno, soldi e app salvati.")) return;
+    startShift({ fresh: true });
+  });
   $("#btn-settings").addEventListener("click", () => {
-    enterDesktop();
+    $("#title").classList.add("hidden");
+    $("#desktop").classList.remove("hidden");
     openWindow("settings");
   });
-  $("#overlay-restart").addEventListener("click", startShift);
-  $("#btn-begin-match").addEventListener("click", beginMatch);
+  $("#overlay-restart").addEventListener("click", () => startShift({ fromOverlay: true }));
 
   $$(".desk-icon").forEach((btn) => {
+    if (btn.classList.contains("desk-icon--app")) return;
     btn.addEventListener("click", () => {
+      if (btn.dataset.suppressClick) return;
       $$(".desk-icon").forEach((b) => b.classList.remove("is-selected"));
       btn.classList.add("is-selected");
-      openWindow(btn.dataset.app);
+      if (btn.dataset.app) openWindow(btn.dataset.app);
     });
-    btn.addEventListener("dblclick", () => openWindow(btn.dataset.app));
+    btn.addEventListener("dblclick", () => {
+      if (btn.dataset.app) openWindow(btn.dataset.app);
+    });
   });
+  renderDesktopApps();
 
   $$("[data-close]").forEach((btn) => {
     btn.addEventListener("click", () => closeWindow(btn.dataset.close));
@@ -1420,8 +2258,23 @@ function wire() {
   $$("#start-menu [data-app]").forEach((btn) => {
     btn.addEventListener("click", () => openWindow(btn.dataset.app));
   });
-  $("#btn-end-shift").addEventListener("click", () => {
-    if (state.playing) endGame("time");
+  $("#btn-begin-match")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    sfxClick();
+    beginMatch();
+  });
+  $("#btn-end-shift").addEventListener("click", () => endGame("time"));
+  $("#spec-remote-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = $("#spec-remote-input");
+    const text = input?.value?.trim();
+    if (!text) return;
+    sendRemoteChat(text);
+    if (input) input.value = "";
+  });
+  $("#spec-remote-hangup")?.addEventListener("click", () => {
+    sfxClick();
+    sendRemoteHangup();
   });
 
   $("#btn-wait-call").addEventListener("click", () => {
@@ -1490,6 +2343,17 @@ function wire() {
     onSync: applyNetSync,
     onPeerEvent: (msg) => {
       if (msg.kind === "toast" && msg.text) toast(`🌐 ${msg.text}`);
+      if (msg.type === "peer" || msg.kind?.startsWith("anydesk") || msg.kind?.startsWith("remote")) {
+        handlePeerNet(msg);
+      }
+    },
+    onDesk: (msg) => {
+      const id = msg.fromId;
+      if (!id || id === state.net?.peerId) return;
+      state.peerDesks[id] = msg;
+      if (state.spectateId === id && state.openWins.has("spectate")) {
+        renderSpectate(msg);
+      }
     },
     onRoster: (list) => {
       const ul = $("#net-roster");
@@ -1501,7 +2365,38 @@ function wire() {
       }
       for (const p of list) {
         const li = document.createElement("li");
-        li.textContent = `${p.name} (${p.role})`;
+        const label = document.createElement("span");
+        label.textContent = p.self ? `${p.name} (tu · ${p.role})` : `${p.name} (${p.role})`;
+        li.appendChild(label);
+        if (!p.self && p.peerId) {
+          const actions = document.createElement("span");
+          actions.style.display = "flex";
+          actions.style.gap = "4px";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "xp-btn";
+          btn.textContent = "Guarda";
+          btn.title = "Vedi e senti (sola lettura)";
+          btn.addEventListener("click", () => {
+            sfxClick();
+            openSpectate(p.peerId);
+          });
+          actions.appendChild(btn);
+          const ad = document.createElement("button");
+          ad.type = "button";
+          ad.className = "xp-btn xp-btn--default";
+          ad.textContent = "AnyDesk’t";
+          ad.disabled = !state.apps.has("remote-desk");
+          ad.title = state.apps.has("remote-desk")
+            ? "Chiedi controllo remoto"
+            : "Installa AnyDesk’t (fake) su ScAmazzon";
+          ad.addEventListener("click", () => {
+            sfxClick();
+            requestAnyDesk(p.peerId, p.name);
+          });
+          actions.appendChild(ad);
+          li.appendChild(actions);
+        }
         ul.appendChild(li);
       }
     },
@@ -1514,6 +2409,8 @@ function wire() {
       $("#net-room").textContent = code;
       $("#net-code").value = code;
       pushNetSync();
+      startDeskPushLoop();
+      scheduleDeskPush(true);
       toast(`Stanza ${code} creata`);
     } catch (err) {
       toast(`Host: ${err.message}`);
@@ -1525,6 +2422,8 @@ function wire() {
       state.net.setName($("#net-name")?.value || state.net.myName);
       const code = await state.net.join($("#net-code")?.value);
       $("#net-room").textContent = code;
+      startDeskPushLoop();
+      scheduleDeskPush(true);
       toast(`Entrato in ${code}`);
     } catch (err) {
       toast(`Join: ${err.message}`);
@@ -1532,8 +2431,21 @@ function wire() {
     }
   });
   $("#net-leave")?.addEventListener("click", () => {
+    if (state.controllingId) {
+      state.net.sendToPeer(state.controllingId, { kind: "anydesk-end" });
+    }
+    if (state.controlledBy) {
+      state.net.sendToPeer(state.controlledBy, { kind: "anydesk-end" });
+    }
     state.net.leave();
+    clearInterval(state._deskLoop);
+    state.peerDesks = {};
+    state.spectateId = null;
+    state.controllingId = null;
+    state.controlledBy = null;
+    $("#remote-banner")?.classList.add("hidden");
     $("#net-room").textContent = "—";
+    closeWindow("spectate");
   });
 
   $("#redeem-form").addEventListener("submit", (e) => {
@@ -1614,18 +2526,17 @@ function wire() {
 function boot() {
   initAllWindows();
   loadHiscore();
-  applySave(loadSave());
+  const save = loadSave();
+  if (save) applySave(save);
   setTalkingListener((on) => {
     $("#caller-avatar")?.classList.toggle("phone__avatar--talking", Boolean(on) && Boolean(state.call));
   });
   wire();
   fillAiForm();
   renderHud();
-  renderCallHistory();
   setTimeout(() => {
     $("#boot").classList.add("hidden");
     $("#title").classList.remove("hidden");
-    renderHud();
   }, 1600);
 }
 

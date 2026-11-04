@@ -109,6 +109,13 @@ export const VOICE_PRESETS = {
     rate: 1.12,
     prefer: [/elsa/i, /paola/i, /federica/i, /clara/i, /italian.*female/i, /donna/i],
   },
+  elder_male: {
+    gender: "male",
+    lang: "it-IT",
+    pitch: 0.85,
+    rate: 0.82,
+    prefer: [/cosimo/i, /diego/i, /italian.*male/i, /uomo/i],
+  },
 };
 
 function isItalianVoice(voice) {
@@ -148,16 +155,31 @@ function pickVoiceForProfile(profile, salt = "") {
   return use[hash % use.length].v;
 }
 
+export function isNpcSpeaking() {
+  try {
+    return Boolean(window.speechSynthesis?.speaking || window.speechSynthesis?.pending);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Legge ad alta voce con profilo personaggio.
+ * Chrome a volte fallisce in silenzio dopo cancel(): delay + retry automatico.
  * @param {string} text
  * @param {{ voice?: string|object, rate?: number, pitch?: number, salt?: string, immediate?: boolean }} opts
  */
 export function speakNpc(text, opts = {}) {
   if (!ttsEnabled || !text || !window.speechSynthesis) return;
 
-  // Nuova battuta: ferma la precedente, ma con generation token (hangup annulla tutto)
-  if (speakTimer) clearTimeout(speakTimer);
+  // Invalida speak precedenti (hangup / nuova battuta)
+  speakGen += 1;
+  const myGen = speakGen;
+
+  if (speakTimer) {
+    clearTimeout(speakTimer);
+    speakTimer = null;
+  }
   if (resumeTimer) {
     clearInterval(resumeTimer);
     resumeTimer = null;
@@ -168,7 +190,6 @@ export function speakNpc(text, opts = {}) {
     /* ignore */
   }
 
-  const myGen = speakGen;
   const profile =
     typeof opts.voice === "string"
       ? VOICE_PRESETS[opts.voice] || VOICE_PRESETS.elder_female
@@ -177,39 +198,84 @@ export function speakNpc(text, opts = {}) {
         : VOICE_PRESETS.elder_female;
 
   const payload = ttsFriendly(text);
-  const delayMs = opts.immediate ? 0 : 80;
+  // Mai 0ms dopo cancel: Chrome mangia l’utterance
+  const delayMs = opts.immediate ? 100 : 140;
   const baseRate = opts.rate ?? profile.rate ?? 1;
 
   speakTimer = setTimeout(() => {
     speakTimer = null;
-    if (myGen !== speakGen) return;
+    if (myGen !== speakGen || !ttsEnabled) return;
 
-    wakeSynthesis();
-    refreshVoices();
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    const u = new SpeechSynthesisUtterance(payload);
-    u.lang = "it-IT";
-    u.rate = Math.max(0.5, Math.min(2, baseRate * ttsRateMul));
-    u.pitch = opts.pitch ?? profile.pitch ?? 1;
+    const fire = () => {
+      if (myGen !== speakGen || !ttsEnabled) return;
+      attempts += 1;
 
-    const picked = pickVoiceForProfile(profile, opts.salt || profile.gender || "default");
-    if (picked) {
-      u.voice = picked;
-      u.lang = picked.lang?.startsWith("it") ? picked.lang : "it-IT";
-    }
+      wakeSynthesis();
+      refreshVoices();
 
-    u.onstart = () => {
-      if (myGen === speakGen) onTalkingChange?.(true);
+      const u = new SpeechSynthesisUtterance(payload);
+      u.lang = "it-IT";
+      u.rate = Math.max(0.5, Math.min(2, baseRate * ttsRateMul));
+      u.pitch = opts.pitch ?? profile.pitch ?? 1;
+
+      const picked = pickVoiceForProfile(profile, opts.salt || profile.gender || "default");
+      if (picked) {
+        u.voice = picked;
+        u.lang = picked.lang?.startsWith("it") ? picked.lang : "it-IT";
+      }
+
+      let started = false;
+      u.onstart = () => {
+        started = true;
+        if (myGen === speakGen) onTalkingChange?.(true);
+      };
+      u.onend = () => {
+        if (myGen === speakGen) onTalkingChange?.(false);
+      };
+      u.onerror = (ev) => {
+        if (myGen !== speakGen) return;
+        onTalkingChange?.(false);
+        const err = String(ev?.error || "");
+        // interrupted/canceled = nuova battuta o hangup → non ritentare se gen cambiato
+        if (err === "interrupted" || err === "canceled") return;
+        if (attempts < maxAttempts) {
+          setTimeout(() => {
+            if (myGen === speakGen) fire();
+          }, 220);
+        }
+      };
+
+      try {
+        window.speechSynthesis.speak(u);
+      } catch {
+        if (attempts < maxAttempts) {
+          setTimeout(() => {
+            if (myGen === speakGen) fire();
+          }, 220);
+        }
+        return;
+      }
+
+      // Watchdog: a volte speak() non parte e non chiama onerror
+      setTimeout(() => {
+        if (myGen !== speakGen || started) return;
+        if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending && attempts < maxAttempts) {
+          try {
+            window.speechSynthesis.cancel();
+          } catch {
+            /* ignore */
+          }
+          setTimeout(() => {
+            if (myGen === speakGen) fire();
+          }, 120);
+        }
+      }, 450);
     };
-    u.onend = () => {
-      if (myGen === speakGen) onTalkingChange?.(false);
-    };
-    u.onerror = () => {
-      if (myGen !== speakGen) return;
-      onTalkingChange?.(false);
-    };
 
-    window.speechSynthesis.speak(u);
+    fire();
 
     resumeTimer = setInterval(() => {
       if (myGen !== speakGen) {
@@ -224,7 +290,7 @@ export function speakNpc(text, opts = {}) {
         return;
       }
       wakeSynthesis();
-    }, 4000);
+    }, 3000);
   }, delayMs);
 }
 
@@ -232,10 +298,10 @@ export function speakNpc(text, opts = {}) {
  * Microfono sempre acceso in chiamata: continuous listening.
  * Il toggle muta/smuta (non start/stop one-shot).
  *
- * Chrome chiude spesso la sessione dopo una pausa: il riavvio lento
- * mangia le prime parole della frase successiva. Mitigazioni:
- * - restart immediato su onend
- * - VAD (livello audio) che riaccende il riconoscimento se stai già parlando
+ * Note Chrome:
+ * - chiude spesso la sessione → restart su onend + watchdog
+ * - NON usare getUserMedia in parallelo (ruba il mic al riconoscimento)
+ * - dopo errori network/aborted ricrea l’istanza SpeechRecognition
  */
 export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -254,23 +320,86 @@ export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
     };
   }
 
-  const rec = new SR();
-  rec.lang = lang;
-  rec.interimResults = true;
-  rec.continuous = true;
-  rec.maxAlternatives = 1;
-
+  let rec = null;
   let live = false;
   let muted = false;
   let running = false;
   /** Testo già finalizzato dall’inizio della sessione (o dall’ultimo clearDraft). */
   let committed = "";
-
-  let mediaStream = null;
-  let audioCtx = null;
-  let analyser = null;
-  let vadTimer = null;
   let restartTimer = null;
+  let watchdog = null;
+  let lastResultAt = 0;
+
+  function wireRec(instance) {
+    instance.lang = lang;
+    instance.interimResults = true;
+    instance.continuous = true;
+    instance.maxAlternatives = 1;
+
+    instance.onstart = () => {
+      running = true;
+      lastResultAt = Date.now();
+      onStatus?.(muted ? "Microfono mutato" : "Microfono acceso — parla pure");
+    };
+
+    instance.onerror = (e) => {
+      const err = e?.error || "";
+      if (err === "aborted" || err === "no-speech") return;
+      if (err === "network" || err === "service-not-allowed") {
+        onStatus?.("Riconoscimento in ripresa…");
+        running = false;
+        rebuildAndStart();
+        return;
+      }
+      const map = {
+        "not-allowed": "Permesso microfono negato (icone lucchetto nella barra indirizzi).",
+        "audio-capture": "Nessun microfono trovato.",
+      };
+      onStatus?.(map[err] || `Errore mic: ${err}`);
+      running = false;
+    };
+
+    instance.onend = () => {
+      running = false;
+      if (!live || muted) return;
+      // Piccolo delay evita InvalidStateError a raffica
+      if (restartTimer) clearTimeout(restartTimer);
+      restartTimer = setTimeout(() => {
+        restartTimer = null;
+        safeStart();
+      }, 40);
+    };
+
+    instance.onresult = (event) => {
+      if (muted || !live) return;
+      lastResultAt = Date.now();
+      let interim = "";
+      let finals = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const r = event.results[i];
+        if (r.isFinal) finals += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      if (finals) {
+        committed += (committed && !/\s$/.test(committed) ? " " : "") + finals.trim() + " ";
+      }
+      const liveText = `${committed}${interim}`.replace(/\s+/g, " ").trim();
+      if (liveText) {
+        onPartial?.(liveText, { interim: Boolean(interim), committed });
+        onStatus?.(interim ? "Ti ascolto…" : "Microfono acceso — parla pure");
+      }
+      const text = finals.trim();
+      if (text) onResult?.(text);
+    };
+  }
+
+  function makeRec() {
+    const instance = new SR();
+    wireRec(instance);
+    return instance;
+  }
+
+  rec = makeRec();
 
   function safeStart() {
     if (!live || muted || running) return;
@@ -278,7 +407,6 @@ export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
       rec.start();
       running = true;
     } catch {
-      /* InvalidStateError se già avviato — ritenta a breve */
       if (restartTimer) clearTimeout(restartTimer);
       restartTimer = setTimeout(() => {
         restartTimer = null;
@@ -287,9 +415,9 @@ export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
           rec.start();
           running = true;
         } catch {
-          /* ignore */
+          rebuildAndStart();
         }
-      }, 30);
+      }, 80);
     }
   }
 
@@ -298,106 +426,61 @@ export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
       clearTimeout(restartTimer);
       restartTimer = null;
     }
-    if (!running) return;
+    if (!running) {
+      try {
+        rec.abort?.();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     try {
       rec.stop();
     } catch {
-      /* ignore */
+      try {
+        rec.abort?.();
+      } catch {
+        /* ignore */
+      }
     }
     running = false;
   }
 
-  function stopVad() {
-    if (vadTimer) {
-      clearInterval(vadTimer);
-      vadTimer = null;
-    }
+  function rebuildAndStart() {
     try {
-      audioCtx?.close();
+      rec.abort?.();
     } catch {
       /* ignore */
     }
-    audioCtx = null;
-    analyser = null;
-    mediaStream?.getTracks()?.forEach((t) => t.stop());
-    mediaStream = null;
-  }
-
-  async function startVad() {
-    stopVad();
-    if (!navigator.mediaDevices?.getUserMedia) return;
-    try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-        video: false,
-      });
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const src = audioCtx.createMediaStreamSource(mediaStream);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      src.connect(analyser);
-      const data = new Uint8Array(analyser.fftSize);
-
-      // Se stai parlando ma il riconoscimento è giù (buco tra sessioni), riavvia subito
-      vadTimer = setInterval(() => {
-        if (!live || muted || !analyser) return;
-        analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) sum += Math.abs(data[i] - 128);
-        const level = sum / data.length;
-        if (level > 6 && !running) safeStart();
-      }, 40);
-    } catch {
-      /* permesso negato: il SR chiederà comunque il mic */
-    }
-  }
-
-  rec.onstart = () => {
-    running = true;
-    onStatus?.(muted ? "Microfono mutato" : "Microfono acceso — parla pure");
-  };
-
-  rec.onerror = (e) => {
-    if (e.error === "aborted") return;
-    // no-speech: Chrome chiude e fa onend — non bloccare il restart
-    if (e.error === "no-speech") return;
-    const map = {
-      "not-allowed": "Permesso microfono negato.",
-      "audio-capture": "Nessun microfono trovato.",
-      network: "Errore rete riconoscimento vocale.",
-    };
-    onStatus?.(map[e.error] || `Errore mic: ${e.error}`);
-  };
-
-  rec.onend = () => {
     running = false;
-    if (!live || muted) return;
-    // Restart immediato: il delay da 250ms mangiava l’inizio della frase dopo
-    safeStart();
-  };
+    rec = makeRec();
+    if (live && !muted) {
+      setTimeout(() => safeStart(), 120);
+    }
+  }
 
-  rec.onresult = (event) => {
-    if (muted || !live) return;
-    let interim = "";
-    let finals = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const r = event.results[i];
-      if (r.isFinal) finals += r[0].transcript;
-      else interim += r[0].transcript;
+  function startWatchdog() {
+    stopWatchdog();
+    watchdog = setInterval(() => {
+      if (!live || muted) return;
+      // Sessione morta senza onend, o silenzio lungo dopo un crash
+      if (!running) {
+        safeStart();
+        return;
+      }
+      // Chrome a volte resta "running" ma non manda più risultati
+      if (lastResultAt && Date.now() - lastResultAt > 45000) {
+        rebuildAndStart();
+      }
+    }, 500);
+  }
+
+  function stopWatchdog() {
+    if (watchdog) {
+      clearInterval(watchdog);
+      watchdog = null;
     }
-    if (finals) {
-      committed += finals;
-      // Dopo un final Chrome spesso chiude: anticipa il riarmo
-      if (!running) safeStart();
-    }
-    const liveText = `${committed}${interim}`.replace(/\s+/g, " ").trim();
-    if (liveText) {
-      onPartial?.(liveText, { interim: Boolean(interim), committed });
-      onStatus?.(interim ? "Ti ascolto…" : "Microfono acceso — parla pure");
-    }
-    const text = finals.trim();
-    if (text) onResult?.(text);
-  };
+  }
 
   return {
     supported: true,
@@ -418,16 +501,17 @@ export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
       live = true;
       muted = false;
       committed = "";
-      void startVad();
-      safeStart();
+      lastResultAt = Date.now();
+      rebuildAndStart();
+      startWatchdog();
       onStatus?.("Microfono acceso — parla pure");
     },
     stopLive() {
       live = false;
       muted = false;
       committed = "";
+      stopWatchdog();
       safeStop();
-      stopVad();
       onStatus?.("");
     },
     setMuted(on) {
@@ -436,7 +520,7 @@ export function createMic({ onResult, onPartial, onStatus, lang = "it-IT" }) {
         safeStop();
         onStatus?.("Microfono mutato");
       } else if (live) {
-        safeStart();
+        rebuildAndStart();
         onStatus?.("Microfono acceso — parla pure");
       }
     },
